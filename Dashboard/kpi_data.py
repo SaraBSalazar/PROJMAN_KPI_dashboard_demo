@@ -20,6 +20,7 @@ GOALS_PATH = DATA_DIR / "Special_Projects_Ratings.xlsx"
 TASKS_PATH = DATA_DIR / "special_project_tasks.json"
 TASKS_XLSX_PATH = DATA_DIR / "Special_Projects_Tasks.xlsx"
 BEYOND_XLSX_PATH = DATA_DIR / "Beyond_Projects.xlsx"
+PUBLICATIONS_XLSX_PATH = DATA_DIR / "Publications.xlsx"
 
 MONTH_ORDER = [
     "January", "February", "March", "April", "May", "June",
@@ -1019,6 +1020,71 @@ def save_beyond_projects(all_cards):
 
 def new_beyond_card():
     return {"title": "", "value": "", "color": "#2A9D8F", "description": ""}
+
+
+# --- Publications (per period, dashboard-only state like the beyond-projects cards) -------
+PUBLICATIONS_PATH = DATA_DIR / "publications.json"
+
+# Invented papers, only used the first time the file doesn't exist yet -- same fake-tag
+# naming convention as generate_demo_data.py's FAKE_PROJECT_TAGS, keyed by the calendar-year
+# period label this demo uses.
+_PUBLICATIONS_SEED = {
+    "2025": [
+        {"title": "A multiomics pipeline for routine lipidomics QC",
+         "venue": "Journal of Open Bioinformatics (example)", "date": "2025-09-12",
+         "url": "https://example.org/jobi/2025/example-lipidomics-qc",
+         "projects": "LIP_003, META_008"},
+        {"title": "Benchmarking structural variant callers on facility sequencing data",
+         "venue": "bioRxiv preprint (example)", "date": "2025-11-03",
+         "url": "https://example.org/biorxiv/2025.11.03.example",
+         "projects": "SEQ_019, STRUCT_002"},
+    ],
+}
+
+
+def load_publications():
+    if not PUBLICATIONS_PATH.exists():
+        save_publications(dict(_PUBLICATIONS_SEED))
+        return dict(_PUBLICATIONS_SEED)
+    try:
+        return json.loads(PUBLICATIONS_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def export_publications_to_excel(all_pubs):
+    """Mirror the publications (held in PUBLICATIONS_PATH as the source of truth) into
+    PUBLICATIONS_XLSX_PATH -- one row per publication, every reporting period in a single
+    sheet -- so this content lives somewhere Excel-readable too, like the beyond-projects
+    cards do."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Publications"
+    ws.append(["Period", "Title", "Venue", "Date", "URL", "Related projects"])
+    for period_label, pubs in all_pubs.items():
+        for pub in pubs:
+            ws.append([period_label, pub.get("title", ""), pub.get("venue", ""),
+                       pub.get("date", ""), pub.get("url", ""), pub.get("projects", "")])
+    for col, width in zip("ABCDEF", (18, 45, 18, 14, 45, 20)):
+        ws.column_dimensions[col].width = width
+    wb.save(PUBLICATIONS_XLSX_PATH)
+
+
+def save_publications(all_pubs):
+    """Write the JSON source of truth, then mirror to Excel. Returns a warning string if
+    the Excel mirror couldn't be written (file open in Excel / locked by OneDrive) -- the
+    JSON save still succeeded, so edits are never lost to a lock."""
+    PUBLICATIONS_PATH.write_text(json.dumps(all_pubs, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        export_publications_to_excel(all_pubs)
+    except PermissionError:
+        return (f"Saved, but couldn't update {PUBLICATIONS_XLSX_PATH.name} (close it in Excel "
+                "to refresh the mirror on the next edit).")
+    return None
+
+
+def new_publication():
+    return {"title": "", "venue": "", "date": "", "url": "", "projects": ""}
 
 
 # --- Quick-add for the project tracker -----------------------------------------------------

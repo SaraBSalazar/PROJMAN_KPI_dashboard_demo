@@ -1,0 +1,18 @@
+{
+  "2025": [
+    {
+      "title": "A multiomics pipeline for routine lipidomics QC",
+      "venue": "Journal of Open Bioinformatics (example)",
+      "date": "2025-09-12",
+      "url": "https://example.org/jobi/2025/example-lipidomics-qc",
+      "projects": "LIP_003, META_008"
+    },
+    {
+      "title": "Benchmarking structural variant callers on facility sequencing data",
+      "venue": "bioRxiv preprint (example)",
+      "date": "2025-11-03",
+      "url": "https://example.org/biorxiv/2025.11.03.example",
+      "projects": "SEQ_019, STRUCT_002"
+    }
+  ]
+}

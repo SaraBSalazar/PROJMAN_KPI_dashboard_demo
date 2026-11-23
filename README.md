@@ -74,9 +74,9 @@ python generate_demo_data.py --empty
 This writes every file with the right columns/sheets but **zero rows** — a real blank
 starting point for the current calendar year, not more fake content. It also removes the
 few files that have no meaningful "empty" state of their own (`special_project_tasks.json`,
-`beyond_projects.json`, and their Excel mirrors): the dashboard recreates those correctly
-the moment it needs them, either empty or via a small generic placeholder you can edit or
-clear from the Special Projects page.
+`beyond_projects.json`, `publications.json`, and their Excel mirrors): the dashboard
+recreates those correctly the moment it needs them, either empty or via a small generic
+placeholder you can edit or clear from the Special Projects / Projects Review pages.
 
 From there:
 
@@ -151,6 +151,7 @@ tied to its own institution's fiscal calendar — see the note below.)
 | `Data/Special_Projects_Ratings.xlsx` | Longer-running initiatives and their goal ratings. |
 | `Data/special_project_tasks.json` | Per-project task checklists (source of truth), mirrored to `Special_Projects_Tasks.xlsx` on every edit. |
 | `Data/beyond_projects.json` | "Beyond projects" cards (source of truth), mirrored to `Beyond_Projects.xlsx` on every save. |
+| `Data/publications.json` | Publications/preprints tagged by related project (source of truth), mirrored to `Publications.xlsx` on every save. |
 | `Data/custom_tags.json` | Remembers new dropdown options until they're used in a saved row. |
 | `Data/tools.xlsx` | Tools/automations inventory. |
 | `Data/project_pause_notes.json` | Per-pause notes and "forgive" flags on the turnaround chart (Projects Review) — a forgiven pause's days are excluded from that project's turnaround medians. |

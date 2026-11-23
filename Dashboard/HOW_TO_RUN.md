@@ -220,14 +220,15 @@ want (weekly, daily, ...). A few things worth knowing:
 | Special Projects → "✏️ Edit this project" (incl. renaming)        | `Data/Special_Projects_Ratings.xlsx` (a rename also moves that project's task checklist, so its tasks follow it)     |
 | Special Projects → per-project task checklist (incl. planned dates) | `Data/special_project_tasks.json` (source of truth, mirrored to `Data/Special_Projects_Tasks.xlsx` on every edit)  |
 | Projects Review → "Beyond projects" cards                           | `Data/beyond_projects.json` (source of truth, mirrored to `Data/Beyond_Projects.xlsx` on every save)               |
+| Projects Review → "Publications" (under Beyond projects)             | `Data/publications.json` (source of truth, mirrored to `Data/Publications.xlsx` on every save)                     |
 | Week tab → "➕ New tag" (project / category / major task)           | `Data/custom_tags.json` (so new tags stay in the dropdowns across restarts, even before they're used in a saved row) |
 | Tools & AI Skills → "Edit a tool" and the "All tools" table         | `Data/tools.xlsx`                                                                                                    |
 | Projects Review → Turnaround → "⏸ Pauses" note / forgive checkbox  | `Data/project_pause_notes.json` (forgiving a pause subtracts just its days from that project's turnaround figures, rather than excluding the whole project) |
 
 Everything in the table above writes to disk immediately when you click its Save/Add
 button — nothing is held only in the browser session, and everything you can change ends up
-in an Excel file (the two JSON files are the dashboard's working copy and are mirrored to
-`Special_Projects_Tasks.xlsx` and `Beyond_Projects.xlsx`). The one exception is
+in an Excel file (the JSON files are the dashboard's working copy and are mirrored to
+`Special_Projects_Tasks.xlsx`, `Beyond_Projects.xlsx`, and `Publications.xlsx`). The one exception is
 `custom_tags.json`, which just remembers dropdown options until you use them in a row — once
 used, the tag lives in `track_time.csv` like any other value.
 

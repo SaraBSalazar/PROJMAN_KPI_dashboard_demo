@@ -445,6 +445,29 @@ def build_beyond_projects():
     print(f"wrote {DATA_DIR / 'Beyond_Projects.xlsx'}")
 
 
+# --- 4b) Publications ------------------------------------------------------------------------
+def build_publications():
+    period_label = f"{YEAR}"
+    pubs = [
+        {"title": "A multiomics pipeline for routine lipidomics QC",
+         "venue": "Journal of Open Bioinformatics (example)", "date": f"{YEAR}-09-12",
+         "url": "https://example.org/jobi/2025/example-lipidomics-qc",
+         "projects": "LIP_003, META_008"},
+        {"title": "Benchmarking structural variant callers on facility sequencing data",
+         "venue": "bioRxiv preprint (example)", "date": f"{YEAR}-11-03",
+         "url": "https://example.org/biorxiv/2025.11.03.example",
+         "projects": "SEQ_019, STRUCT_002"},
+    ]
+    data = {period_label: pubs}
+    path = DATA_DIR / "publications.json"
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"wrote {path}")
+
+    rows = [{"Period": period_label, **p} for p in pubs]
+    pd.DataFrame(rows).to_excel(DATA_DIR / "Publications.xlsx", sheet_name="Publications", index=False)
+    print(f"wrote {DATA_DIR / 'Publications.xlsx'}")
+
+
 # --- 5) Tools & AI Skills inventory ------------------------------------------------------
 TOOLS = [
     ("QC Dashboard", "Adaptation of the internal pipeline into a facility-specific QC dashboard.",
@@ -526,7 +549,8 @@ def build_empty(year=None):
     build_custom_tags()  # already writes an empty {"projects": [], ...} unconditionally
 
     for stray in ("special_project_tasks.json", "Special_Projects_Tasks.xlsx",
-                  "beyond_projects.json", "Beyond_Projects.xlsx", "KPI_2025.xlsx"):
+                  "beyond_projects.json", "Beyond_Projects.xlsx",
+                  "publications.json", "Publications.xlsx", "KPI_2025.xlsx"):
         p = DATA_DIR / stray
         if p.exists():
             p.unlink()
@@ -545,6 +569,7 @@ if __name__ == "__main__":
         build_time_log(projects)
         build_special_projects()
         build_beyond_projects()
+        build_publications()
         build_tools()
         build_custom_tags()
         print(f"\nDone. Demo data covers calendar year {YEAR}.")
