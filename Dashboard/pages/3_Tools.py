@@ -65,6 +65,11 @@ def render_tool_card(row, faded=False):
         if _clean(row["Future gain"]):
             st.markdown(f":blue[**→** {_clean(row['Future gain'])}]")
 
+    steps = kd.parse_tool_steps(row["Steps"])
+    if steps:
+        st.dataframe(pd.DataFrame(steps, columns=kd.TOOL_STEPS_COLUMNS),
+                     hide_index=True, width="stretch")
+
 
 def pick_or_new(label, options, current, key):
     """One dropdown that also accepts a brand-new value typed into it. Deliberately not a
@@ -103,6 +108,13 @@ def render_tool_editor(tools_df, row):
                                  _clean(row["Project Origin"]), f"torigin_{key}")
             limitations = st.text_area("Limitations", value=_clean(row["Limitations"]), key=f"tlim_{key}")
             future_gain = st.text_area("Future gain", value=_clean(row["Future gain"]), key=f"tgain_{key}")
+            steps = st.text_area(
+                "Steps breakdown (optional) — one row per line",
+                value=_clean(row["Steps"]), key=f"tsteps_{key}", height=100,
+                help="One row per line, as Step / How / AI involved?. Paste straight out of "
+                     "Excel (tab-separated), or type a row by hand with ' | ' between columns, "
+                     "e.g. 'GitHub repo + push | Cookiecutter + git, on qds | No'.",
+            )
             st.caption("Deprecated = still on record, but not the thing to reach for anymore -- "
                        "it moves to its own (faded) section below instead of the gallery/overview.")
             dep_col, sup_col = st.columns([1, 2])
@@ -130,7 +142,8 @@ def render_tool_editor(tools_df, row):
                                        ("Use", use), ("Project Origin", origin),
                                        ("Limitations", limitations), ("Future gain", future_gain),
                                        ("Status", "Deprecated" if deprecated else ""),
-                                       ("Why deprecated", why_deprecated if deprecated else "")):
+                                       ("Why deprecated", why_deprecated if deprecated else ""),
+                                       ("Steps", steps)):
                         edited.loc[mask, col] = value
                     try:
                         kd.save_tools(edited)

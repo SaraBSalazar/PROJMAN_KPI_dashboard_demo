@@ -123,7 +123,9 @@ with tab_week:
         m2.metric("Projects touched", int(week_df.loc[week_df["Project"].isin(REAL_PROJECT_TAGS), "Project"].nunique()))
         m3.metric("Entries", int(len(week_df)))
         m4.metric("Timesheet updated", f"{n_updated}/{n_tracked}" if n_tracked else "—",
-                  help="Week entries marked 'Yes' in the Timesheet column of the time log below.")
+                  help="Week entries marked 'Yes' out of those marked 'Yes'/'No' in the Timesheet "
+                       "column below -- entries marked 'N/A' (not supposed to be logged in the "
+                       "timesheet) don't count toward either side.")
 
         anchor("week-hours")
         c1, c2 = st.columns([1.3, 1])
@@ -189,10 +191,8 @@ with tab_week:
             cur_sort = st.session_state.get("week_sort_col", "(file order)")
             cur_desc = st.session_state.get("week_sort_dir", "⬆ Ascending") == "⬇ Descending"
             editor_key = f"editor_{period_label}_{selected_label}_{cur_sort}_{cur_desc}"
-            blank_key = f"blank_rows_{period_label}_{selected_label}"
             editor_state = st.session_state.get(editor_key, {})
-            has_pending = (any(editor_state.get(k) for k in ("edited_rows", "added_rows", "deleted_rows"))
-                           or st.session_state.get(blank_key, 0) > 0)
+            has_pending = any(editor_state.get(k) for k in ("edited_rows", "added_rows", "deleted_rows"))
 
             sc1, sc2, sc3 = st.columns([1.2, 1, 3])
             sort_choice = sc1.selectbox("Sort by", ["(file order)"] + list(SORT_COLS),
@@ -205,7 +205,6 @@ with tab_week:
                                "(Sorting and changing week would lose them.)", icon="✏️")
                     if st.button("↩ Discard unsaved changes", key=f"discard_{editor_key}"):
                         st.session_state.pop(editor_key, None)
-                        st.session_state.pop(blank_key, None)
                         st.rerun()
         else:
             sort_choice, sort_desc = "(file order)", False
@@ -221,9 +220,10 @@ with tab_week:
         if READONLY:
             st.dataframe(week_raw, width="stretch", hide_index=True)
         else:
-            st.caption("Edit hours directly, **➕ Add row** for a new entry, or tick 🗑 on the rows to remove — "
-                       "nothing is written until you save. In the Project / Category / Major task cells you can "
-                       "pick an existing tag **or type a brand-new one**, and it's kept when you save.")
+            st.caption("Edit hours directly, or fill in one of the blank rows at the bottom for a new entry "
+                       "(save and reopen the tab for more blank rows once you run out) — nothing is written "
+                       "until you save. In the Project / Category / Major task cells you can pick an existing "
+                       "tag **or type a brand-new one**, and it's kept when you save.")
 
             custom_tags = kd.load_custom_tags()
             # str-filtered: a row saved with that cell left blank round-trips through the
@@ -280,10 +280,12 @@ with tab_week:
 
             # num_rows must stay "fixed": the grid's own row-adding writes each new row with
             # df.loc[i, :] = [list of cell values], which pandas cannot do when one of those
-            # values is itself a list -- and the tag cells are lists (see TAG_COLS above). So
-            # rows are added here instead, as blank rows appended before the grid is drawn,
-            # and deleted via the 🗑 tick box rather than the grid's own row selection.
-            n_blank = st.session_state.get(blank_key, 0)
+            # values is itself a list -- and the tag cells are lists (see TAG_COLS above). So a
+            # fixed pool of blank rows is appended up front instead, always the same size run
+            # to run -- changing the editor's own row count between reruns (as an earlier,
+            # button-driven version of this did) resets Streamlit's own pending-edit state for
+            # the whole widget, silently discarding whatever else was typed and not yet saved.
+            N_BLANK_ROWS = 6
             editor_df = week_raw.copy()
             for col in TAG_COLS:
                 # dtype=object explicitly: on a week with zero rows the assignment would
@@ -291,33 +293,28 @@ with tab_week:
                 # column config rejects (crashing the whole Week tab for an empty week).
                 editor_df[col] = pd.Series([kd.tag_to_cell(v) for v in editor_df[col]],
                                            index=editor_df.index, dtype=object)
-            if n_blank:
-                # Built column by column with the frame's own dtypes: a plain DataFrame of
-                # blank rows would be all-NA in the numeric columns, which makes concat warn
-                # about (and one day change) the resulting dtypes.
-                # A numeric column (Hrs, Min) can be pure int64 if every row this week
-                # happens to have a value -- int64 can't hold a blank at all, so None there
-                # raises in pandas' own Series construction. NaN is the one blank value every
-                # dtype accepts, but it still needs a float dtype to carry it, hence the
-                # upcast below (harmless: NumberColumn renders a float the same as an int).
-                blank_idx = range(len(editor_df), len(editor_df) + n_blank)
-                editor_df = pd.concat([editor_df, pd.DataFrame({
-                    col: pd.Series(
-                        [[] for _ in range(n_blank)] if col in TAG_COLS
-                        else (["No"] * n_blank if col == "Timesheet updated" else [float("nan")] * n_blank),
-                        index=blank_idx,
-                        dtype=(object if col in TAG_COLS
-                               else "float64" if pd.api.types.is_integer_dtype(editor_df[col])
-                               else editor_df[col].dtype))
-                    for col in editor_df.columns}, index=blank_idx)])
-            editor_df.insert(0, "🗑", False)
+            # Built column by column with the frame's own dtypes: a plain DataFrame of blank
+            # rows would be all-NA in the numeric columns, which makes concat warn about (and
+            # one day change) the resulting dtypes. A numeric column (Hrs, Min) can be pure
+            # int64 if every row this week happens to have a value -- int64 can't hold a blank
+            # at all, so None there raises in pandas' own Series construction. NaN is the one
+            # blank value every dtype accepts, but it still needs a float dtype to carry it,
+            # hence the upcast below (harmless: NumberColumn renders a float the same as an int).
+            blank_idx = range(len(editor_df), len(editor_df) + N_BLANK_ROWS)
+            editor_df = pd.concat([editor_df, pd.DataFrame({
+                col: pd.Series(
+                    [[] for _ in range(N_BLANK_ROWS)] if col in TAG_COLS
+                    else (["No"] * N_BLANK_ROWS if col == "Timesheet updated" else [float("nan")] * N_BLANK_ROWS),
+                    index=blank_idx,
+                    dtype=(object if col in TAG_COLS
+                           else "float64" if pd.api.types.is_integer_dtype(editor_df[col])
+                           else editor_df[col].dtype))
+                for col in editor_df.columns}, index=blank_idx)])
 
             edited = st.data_editor(
                 editor_df, num_rows="fixed", width="stretch",
                 key=f"editor_{period_label}_{selected_label}_{sort_choice}_{sort_desc}",
                 column_config={
-                    "🗑": st.column_config.CheckboxColumn(
-                        "🗑", default=False, width="small", help="Tick to delete this row when you save."),
                     **{col: st.column_config.MultiselectColumn(
                         label, options=opts, accept_new_options=True, color="primary",
                         help="Pick a tag, or type a new one and press Enter. One tag per cell.")
@@ -325,14 +322,36 @@ with tab_week:
                     "Hrs": st.column_config.NumberColumn("Hrs", min_value=0, step=1),
                     "Min": st.column_config.NumberColumn("Min", min_value=0, max_value=59, step=1),
                     "Timesheet updated": st.column_config.SelectboxColumn(
-                        "Timesheet", options=["Yes", "No"], help="Has this time been entered in Timesheet?"),
+                        "Timesheet", options=["Yes", "No", "N/A"],
+                        help="Has this time been entered in the timesheet? Pick 'N/A' if it isn't "
+                             "supposed to be logged there at all -- it won't count toward the "
+                             "Timesheet updated tile above."),
                 },
             )
-
-            # Dropping the ticked rows here is what makes them deletions: apply_week_edits
-            # treats any original row missing from `edited` as a row to remove from the file.
             edited = edited.copy()
-            edited = edited.loc[~edited["🗑"].fillna(False).astype(bool)].drop(columns="🗑")
+
+            # Row removal: a companion read-only table of the same rows, using Streamlit's own
+            # row-selection checkboxes (not a data column mixed into the editable grid itself).
+            # Selecting a row here doesn't touch editor_df's shape -- same reasoning as above --
+            # so it's only actually dropped once, right before Save.
+            del_display = pd.DataFrame({
+                "Project": [kd.tag_from_cell(c) for c in edited["Weekly entry name (chart)"]],
+                "Category": [kd.tag_from_cell(c) for c in edited["Category"]],
+                "Major task": [kd.tag_from_cell(c) for c in edited["Major task name (chart)"]],
+                "Hrs": edited["Hrs"], "Min": edited["Min"],
+            }, index=edited.index)
+            st.caption("To remove a row, select it below (click its row) and then save — "
+                       "blank/unfilled rows are harmless to select too.")
+            del_state = st.dataframe(
+                del_display, width="stretch", hide_index=True, on_select="rerun",
+                selection_mode="multi-row",
+                key=f"delrows_{period_label}_{selected_label}_{sort_choice}_{sort_desc}",
+            )
+            rows_to_delete = list(del_state["selection"]["rows"])
+            if rows_to_delete:
+                st.info(f"{len(rows_to_delete)} row(s) selected for removal on save.")
+                edited = edited.drop(index=[i for i in rows_to_delete if i in edited.index])
+
             overfilled = False
             for col in TAG_COLS:
                 cells = list(edited[col])
@@ -341,10 +360,6 @@ with tab_week:
             if overfilled:
                 st.warning("A Project / Category / Major task cell holds more than one tag — "
                            "only the first one is saved.", icon="⚠️")
-
-            if st.button("➕ Add row", key=f"addrow_{period_label}_{selected_label}"):
-                st.session_state[blank_key] = n_blank + 1
-                st.rerun()
 
             if st.button("💾 Save changes to track_time.csv", key=f"save_{period_label}_{selected_label}"):
                 updated_raw = kd.apply_week_edits(raw_df, orig_index, edited, selected_start)
@@ -364,7 +379,7 @@ with tab_week:
                     except OSError:
                         new_tags = []
                     st.session_state.pop(f"editor_{period_label}_{selected_label}_{sort_choice}_{sort_desc}", None)
-                    st.session_state.pop(blank_key, None)
+                    st.session_state.pop(f"delrows_{period_label}_{selected_label}_{sort_choice}_{sort_desc}", None)
                     st.success("Saved." + (f" New tags kept: {', '.join(new_tags)}." if new_tags else "")
                                + " Reloading...")
                     st.rerun()

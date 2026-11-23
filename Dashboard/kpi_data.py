@@ -451,7 +451,7 @@ def apply_week_edits(raw_df, orig_index, edited, week_start):
         timesheet = str(r.get("Timesheet updated", "") or "").strip()
         rows_to_add.append({
             "Entry": r.get("Weekly entry name (chart)", ""),
-            "Timesheet updated": timesheet if timesheet in ("Yes", "No") else "No",
+            "Timesheet updated": timesheet if timesheet in ("Yes", "No", "N/A") else "No",
             "Category": r.get("Category", ""),
             "Hours (exact)": hrs + mins / 60,
             "Major task name (chart)": r.get("Major task name (chart)", ""),
@@ -899,8 +899,13 @@ def save_goals(edited_df):
 TOOLS_PATH = DATA_DIR / "tools.xlsx"
 TOOLS_COLS = [
     "Name", "Description", "Type of tool", "Built in", "Use", "Project Origin",
-    "Limitations", "Future gain", "Status", "Why deprecated",
+    "Limitations", "Future gain", "Status", "Why deprecated", "Steps",
 ]
+# "Steps" is an optional per-tool breakdown table (e.g. what a multi-step automation creates
+# and how), stored as one line per row -- columns separated by a tab (so pasting straight out
+# of Excel just works) or, failing that, by "|" (so typing a row by hand in the editor's text
+# area works too, since a literal Tab keypress there would just move focus out of the box).
+TOOL_STEPS_COLUMNS = ["Step", "How", "AI involved?"]
 # "Status" is "" (active) or "Deprecated" -- a tool that's still real and worth keeping on
 # record, but no longer the thing to reach for. "Why deprecated" is a free-text reason, only
 # meaningful once Status is "Deprecated" -- it isn't always "folded into another tool"
@@ -934,6 +939,24 @@ def save_tools(edited_df):
     out = edited_df[[c for c in TOOLS_COLS if c in edited_df.columns]].copy()
     out = out[out["Name"].astype(str).str.strip().replace({"nan": "", "None": ""}) != ""]
     out.to_excel(TOOLS_PATH, sheet_name="Tools", index=False)
+
+
+def parse_tool_steps(text):
+    """A tool's "Steps" cell -> a list of [Step, How, AI involved?] rows for display, padding
+    short rows and ignoring blank lines. See TOOL_STEPS_COLUMNS for the delimiter rules."""
+    text = "" if text is None else str(text).strip()
+    if not text or text.lower() == "nan":
+        return []
+    rows = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        delim = "\t" if "\t" in line else "|"
+        cells = [c.strip() for c in line.split(delim)]
+        cells = (cells + ["", "", ""])[:3]
+        rows.append(cells)
+    return rows
 
 
 # --- Beyond-projects cards (per period, dashboard-only state like the task checklists) ----

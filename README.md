@@ -190,5 +190,7 @@ institution-specific setup:
 
 ## License
 
-[MIT](LICENSE) — use, copy, modify, and redistribute freely; just keep the copyright
-notice and license text, and take it as-is (no warranty).
+[GNU GPLv3](LICENSE) — use, copy, modify, and redistribute freely, but any derivative
+work must also be released under the GPLv3 with its source code made available (no
+warranty). If you use or build on this software, please cite it — see
+[CITATION.cff](CITATION.cff).

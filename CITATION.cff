@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "KPI dashboard"
+abstract: >-
+  A Streamlit dashboard for tracking the work of a small analysis/consulting
+  team: a personal time log, a project tracker with turnaround metrics, a
+  goals/ratings view for longer-running initiatives, and a tools inventory,
+  plus a static, read-only snapshot exporter.
+authors:
+  - given-names: Sara B.
+    family-names: Salazar
+    affiliation: "GIMM - Gulbenkian Institute for Molecular Medicine"
+    orcid: "https://orcid.org/0000-0002-4867-8975"
+repository-code: "https://github.com/SaraBSalazar/KPI_dashboard_demo"
+license: GPL-3.0
+date-released: "2026-11-23"
