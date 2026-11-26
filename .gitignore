@@ -18,4 +18,8 @@ Data/*.backup-*.json
 # bloats history every time the data changes. Keep them on disk, just not in git.
 Share/*.html
 Dashboard/publish_snapshot.log
+# Seeded from Data/SpecialProjects_Tools_expected_gains_v5.xlsx on first page load, and
+# rebuilt whenever generate_demo_data.py regenerates that seed. Real data in the private
+# dashboard; derived here.
+Data/gains.xlsx
 Data/*.pptx

@@ -1873,9 +1873,10 @@ def _capped_list_hover(head, items, limit=HOVER_NAME_LIMIT):
 def _group_blocks(labels):
     """[a, a, b, b, b, c] -> [("a", 0, 2), ("b", 2, 5), ("c", 5, 6)] -- the contiguous runs
     in an already-grouped list, as (value, start, end) integer index ranges. Shared by every
-    chart that bands a grouped axis (fig_gains_active_potential's rows, fig_gains_matrix's
-    columns): both rely on their data already being sorted into blocks, this just finds where
-    each block starts and ends so a shape/annotation can be drawn once per block."""
+    chart that bands a grouped axis (fig_gains_matrix's columns, and any caller of
+    _state_stack_traces that passes group_colors): they rely on their data already being
+    sorted into blocks, this just finds where each block starts and ends so a shape or
+    annotation can be drawn once per block."""
     blocks = []
     start = 0
     labels = list(labels)
@@ -1917,17 +1918,17 @@ def _add_row_group_bands(fig, groups, group_colors, label_xref="paper", label_x=
 
 
 def _state_stack_traces(fig, df, label_col, state_colors, group_colors=None):
-    """Shared innards of fig_gains_active_potential and fig_audience_outputs: both are a
-    horizontal stacked bar, one row per category, split Delivered/In use/Potential with a
-    direct-labeled row total -- the only real difference between the two charts is what the
-    rows ARE (a gain type vs. an audience/output flag), so the bar-building logic lives once
-    here. `df` must carry Group/n_delivered/n_in_use/n_potential/n_total/delivered_projects/
+    """A horizontal stacked bar, one row per category, split Delivered/In use/Potential with
+    a direct-labeled row total. Written as a helper when fig_gains_active_potential and
+    fig_audience_outputs both needed it; fig_gains_active_potential has since been dropped (it
+    was fig_gains_matrix's column margin drawn twice -- see that function), so today
+    fig_audience_outputs is the only caller. Kept as a helper rather than inlined: the shape
+    is the obvious one for any future "developments by <boolean dimension>" chart. `df` must carry Group/n_delivered/n_in_use/n_potential/n_total/delivered_projects/
     in_use_projects/potential_projects/label_col; `state_colors` is the page's theme-matched
     {"Delivered": ..., "In use": ..., "Potential": ...} dict (kd.GAIN_STATE_COLORS[_DARK]).
     `group_colors` (optional {Group value: hex}), when given, bands the y-axis via
-    _add_row_group_bands using df["Group"] -- fig_gains_active_potential's 4 gain-theme
-    blocks, or fig_audience_outputs's single "inward-facing" block. Left out entirely
-    (df["Group"] all blank) draws nothing, same as the old group_sep=False."""
+    _add_row_group_bands using df["Group"]. Left out entirely (df["Group"] all blank) draws
+    nothing, same as the old group_sep=False."""
     wrapped = [_wrap_label(v, 20) for v in df[label_col]]
 
     def hover(row, state, n, projects):
@@ -1948,15 +1949,27 @@ def _state_stack_traces(fig, df, label_col, state_colors, group_colors=None):
             hovertext=[hover(r, state, r[n_col], r[proj_col]) for _, r in df.iterrows()],
             hoverinfo="text",
         ))
-    fig.add_trace(go.Scatter(
-        x=df["n_total"], y=wrapped, mode="text", text=df["n_total"],
-        textposition="middle right", textfont=dict(color=TL_INK_SECONDARY, size=11),
-        hoverinfo="skip", showlegend=False,
-    ))
+    # Row totals as ANNOTATIONS, not a mode="text" Scatter trace: the trace could only pin
+    # text at the bar's own tip ("middle right" anchors to the point itself, there is no text
+    # offset on a scatter), which left the number crowding the bar it belongs to and reading
+    # as part of it. An annotation takes a pixel `xshift`, so the total sits clear of the bar
+    # end at a fixed distance whatever the axis scale. Bold, and in the primary ink rather
+    # than the secondary: it's the number a reader actually scans this chart for, and it was
+    # the faintest text on it.
+    for label, total in zip(wrapped, df["n_total"]):
+        fig.add_annotation(
+            x=total, y=label, xref="x", yref="y", xanchor="left", yanchor="middle",
+            xshift=12, showarrow=False, text=f"<b>{total}</b>",
+            font=dict(color=TL_INK_PRIMARY, size=12),
+        )
     if group_colors:
         _add_row_group_bands(fig, list(df["Group"]), group_colors)
 
-    fig.update_xaxes(title_text="Developments", showgrid=True, gridcolor=TL_GRID)
+    # Headroom for those labels -- an annotation is not part of the data, so autorange knows
+    # nothing about it and the widest row's total would otherwise sit half outside the plot.
+    max_total = max(int(df["n_total"].max()), 1)
+    fig.update_xaxes(title_text="Developments", showgrid=True, gridcolor=TL_GRID,
+                      range=[0, max_total * 1.08 + 0.6])
     fig.update_yaxes(showgrid=False, tickfont=dict(size=12, color=TL_INK_SECONDARY),
                       autorange="reversed")
     fig.update_layout(
@@ -1964,37 +1977,6 @@ def _state_stack_traces(fig, df, label_col, state_colors, group_colors=None):
         legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1),
         margin=dict(l=10, r=60, t=70, b=40),
     )
-
-
-def fig_gains_active_potential(gain_summary, state_colors, group_colors):
-    """The centrepiece of the Gains page: one row per gain type, split into Delivered / In use
-    / Potential. Rows are grouped by theme (GAIN_GROUP_ORDER) rather than sorted by raw count,
-    because the count alone hides the actual story -- within each group the biggest gain still
-    comes first (n_total descending), but the GROUPING is what makes "efficiency is largely
-    banked, everything outward-facing is still ahead" visible at a glance instead of requiring
-    the reader to mentally regroup these rows themselves. Works with however many gains
-    gain_summary actually has (9, 10, 11, 12, ...) -- nothing here assumes a fixed count any
-    more. `state_colors` / `group_colors` are the page's theme-matched kd.GAIN_STATE_COLORS /
-    _DARK and kd.GAIN_GROUP_COLORS / _DARK dicts."""
-    df = gain_summary.copy()
-    group_rank = {g: i for i, g in enumerate(GAIN_GROUP_ORDER)}
-    df["_group_rank"] = df["Group"].map(group_rank)
-    df = df.sort_values(["_group_rank", "n_total"], ascending=[True, False]).reset_index(drop=True)
-
-    fig = go.Figure()
-    if not len(df) or not df["n_total"].sum():
-        _empty(fig, "No gains recorded yet")
-        fig.update_xaxes(visible=False)
-        fig.update_yaxes(visible=False)
-        fig.update_layout(**base_layout("Delivered, in use & potential gains", width=950, height=320))
-        return fig
-
-    _state_stack_traces(fig, df, "Gain", state_colors, group_colors=group_colors)
-    fig.update_layout(
-        **base_layout("Delivered, in use & potential gains", width=1120, height=max(340, 90 + 42 * len(df))),
-        margin=dict(r=190),
-    )
-    return fig
 
 
 def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_groups, group_colors):
@@ -2007,6 +1989,14 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
     an earlier draft had it: a hollow marker in a dot grid reads as missing data, not as
     "potential". Within each state, developments with more gains riding on them sort first,
     since those are the ones where "what does this actually deliver" matters most.
+
+    Row and column TOTALS sit outside the grid: per row, how many gain types that development
+    delivers; per column, how many developments deliver that gain. They are what let this one
+    chart replace the stacked bar chart that used to sit above it -- that chart was exactly
+    this grid's column margin (bar length for a gain = the number of dots in its column, split
+    by the same state colours), so it showed nothing the grid didn't already hold and the page
+    had to keep two pictures of one table in agreement. The state SPLIT behind a column total
+    is in its hover, which is the part a bare number would otherwise lose.
 
     `gain_columns` (kd.load_expected_gains's result, in sheet order) and `gain_groups`
     ({gain: group}, same source) replace what used to be the fixed kd.GAIN_COLUMNS / a direct
@@ -2063,7 +2053,8 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
     # each block's columns, a solid header strip naming the group just above the plot, and a
     # boundary line between blocks, so the grouping that's otherwise only implicit in column
     # order reads at a glance. Colour here is group_colors, deliberately never the dots'
-    # own colour (state_colors) -- see fig_gains_active_potential for why.
+    # own colour (state_colors): colour already means maturity everywhere on this page, and a
+    # second meaning for the same channel is exactly what makes a chart unreadable.
     col_groups = [gain_groups[g] for g in gain_columns]
     header_y0, header_y1 = 1.0, 1.1
     for group, start_i, end_i in _group_blocks(col_groups):
@@ -2084,8 +2075,58 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
             fig.add_shape(type="line", xref="x", x0=i - 0.5, x1=i - 0.5, yref="paper",
                           y0=0, y1=1, line=dict(color=TL_BASELINE, width=1.5))
 
+    # --- Margins: row totals to the right, column totals under the grid --------------------
+    # Both are drawn as annotations pinned to a category, not as an extra data trace: a trace
+    # would join the legend, take part in hover, and (for the column totals) need a second
+    # y-axis to sit below the last row. Annotations just sit where they're told.
+    #
+    # `yref="paper"` for the column totals puts them under the plot area whatever the row
+    # count, which is the one placement that survives a grid that grows a development.
+    n_by_gain = {g: 0 for g in gain_columns}
+    split_by_gain = {g: {s: 0 for s in STATE_ORDER} for g in gain_columns}
+    for _, row in dev.iterrows():
+        for gain in gains_by_id.get(row["ID"], set()):
+            if gain in n_by_gain:
+                n_by_gain[gain] += 1
+                split_by_gain[gain][row["state"]] += 1
+
+    for yi, (_, row) in enumerate(dev.iterrows()):
+        fig.add_annotation(
+            x=len(gain_columns) - 0.5, y=wrapped_y[yi], xref="x", yref="y",
+            xanchor="left", yanchor="middle", xshift=14, showarrow=False,
+            text=f"<b>{row['_n_gains']}</b>", font=dict(color=TL_INK_PRIMARY, size=12),
+            hovertext=f"<b>{row['Project']}</b><br>{row['_n_gains']} gain type"
+                      f"{'s' if row['_n_gains'] != 1 else ''}",
+        )
+    # Clear of the x tick labels, which WRAP: "AI skills (Bigorna Project)" is three lines at
+    # _wrap_label's 14-character width here, and a fixed offset that looked right against a
+    # one-line label printed the total straight through a three-line one. Measured off the
+    # labels themselves so it stays right however they wrap -- ~15px per line at 11pt, plus a
+    # gap. The bottom margin below is widened by the same measurement.
+    tick_lines = max(w.count("<br>") for w in wrapped_x) + 1
+    totals_yshift = -(tick_lines * 15 + 16)
+    for xi, gain in enumerate(gain_columns):
+        split = " · ".join(f"{GAIN_STATE_LABELS.get(st, st)}: {n}"
+                            for st, n in split_by_gain[gain].items() if n)
+        fig.add_annotation(
+            x=wrapped_x[xi], y=0, xref="x", yref="paper", xanchor="center", yanchor="top",
+            yshift=totals_yshift, showarrow=False, text=f"<b>{n_by_gain[gain]}</b>",
+            font=dict(color=TL_INK_PRIMARY, size=12),
+            hovertext=f"<b>{gain}</b><br>{n_by_gain[gain]} development"
+                      f"{'s' if n_by_gain[gain] != 1 else ''}"
+                      + (f"<br>{split}" if split else ""),
+        )
+    # Corner labels, so neither margin is a row of unexplained numbers.
+    fig.add_annotation(x=len(gain_columns) - 0.5, y=1, xref="x", yref="paper", xanchor="left",
+                        yanchor="bottom", xshift=10, yshift=6, showarrow=False,
+                        text="gains", font=dict(color=TL_INK_MUTED, size=10))
+    fig.add_annotation(x=-0.5, y=0, xref="x", yref="paper", xanchor="right", yanchor="top",
+                        xshift=-6, yshift=totals_yshift, showarrow=False, text="developments",
+                        font=dict(color=TL_INK_MUTED, size=10))
+
     fig.update_xaxes(categoryorder="array", categoryarray=wrapped_x, showgrid=True, gridcolor=TL_GRID,
-                      tickfont=dict(size=11, color=TL_INK_SECONDARY))
+                      tickfont=dict(size=11, color=TL_INK_SECONDARY),
+                      range=[-0.5, len(gain_columns) - 0.5 + 0.4])
     fig.update_yaxes(categoryorder="array", categoryarray=wrapped_y, showgrid=True, gridcolor=TL_GRID,
                       tickfont=dict(size=11, color=TL_INK_SECONDARY), autorange="reversed")
     fig.update_layout(
@@ -2093,9 +2134,12 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
         # moment a name wrapped to two lines (e.g. "Functional enrichment analysis" running
         # into "Lipidomics toolkit (metabolomics)" above it). 36px comfortably fits a two-line
         # 11pt label with clearance even though width=34 above means almost nothing wraps today.
-        **base_layout("What delivers what", width=1000, height=max(420, 140 + 36 * len(dev))),
+        **base_layout("What delivers what", width=1000,
+                      height=max(440, 165 + 36 * len(dev) + 16 * tick_lines)),
         legend=dict(orientation="h", yanchor="bottom", y=1.2, xanchor="right", x=1),
-        margin=dict(l=10, r=20, t=115, b=110),
+        # The column totals live in the BOTTOM margin, below wrapped tick labels -- so the
+        # margin has to cover both, measured off the same tick_lines as the offset above.
+        margin=dict(l=10, r=60, t=115, b=60 + 18 * tick_lines),
     )
     return fig
 
@@ -2118,8 +2162,8 @@ def fig_audience_outputs(developments, state_colors, ada_color):
     from a different column -- "ADA / Personal", `Output level` in {Internal ADA, Internal
     Worker} -- the audience dimension those 5 flags never actually asked about: not "is there
     an internal user" but "is this output for ADA/Sara herself rather than for anyone it would
-    call a 'user' at all." Same Delivered/In use/Potential split as fig_gains_active_potential
-    throughout; `state_colors` is the page's theme-matched kd.GAIN_STATE_COLORS / _DARK dict.
+    call a 'user' at all." Same Delivered/In use/Potential split as every other chart on this
+    page; `state_colors` is the page's theme-matched kd.GAIN_STATE_COLORS / _DARK dict.
 
     ADA / Personal is always pinned to the FIRST row, not sorted in by its count like the
     other 5 -- the point it makes (inward-facing, as against the Internal/External USERS rows
@@ -2401,7 +2445,8 @@ def _lineage_resolve_parent(label, dev_by_id, dev_by_name):
     return f"untracked::{norm}", str(label), "Tool / AI Skill", None
 
 
-def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
+def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
+                      parent_status=None):
     """Left-to-right layered tree of development -> development evolution ONLY -- no
     user-project id anywhere on this chart. Replaces the old combined fig_lineage, which drew
     "built from user work" (14 edges in today's workbook) and "benefits" (0) in the same
@@ -2444,6 +2489,13 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
     instead of 16 floating, disconnected dots. The page prefers to skip calling this entirely in that case and show a richer
     markdown explainer instead (see pages/5_Gains.py's own n_evolved check), but this function
     stays safe to call directly either way -- tests, or a future caller.
+
+    `parent_status` (kd.load_expected_gains's "lineage_parent_status", or None) is the live
+    tools.xlsx status of a parent that has no row in this workbook -- today only ever
+    "Deprecated". A parent being deprecated is the normal, healthy end state for one that got
+    folded into its own child (notion-to-elab -> Project Closer), not a data gap, so the node
+    says which it is rather than leaving a reader to guess from a hollow dot. The Tools page
+    is where the deprecation reason itself lives; this chart only reports the fact.
 
     `project_lookup` is accepted for call-site symmetry with this page's other reuse-aware
     chart functions but genuinely unused here: Part A of this redesign draws no user-project
@@ -2586,9 +2638,13 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
         kind, state = node_kind_state(node_id)
         tracked = node_id in dev_by_id
         state_label = GAIN_STATE_LABELS.get(state, state)
-        hover = f"<b>{node_label(node_id)}</b><br>{kind}" + (
-            f"<br>State: {state_label}" if tracked else "<br>(untracked -- no row in this workbook)"
-        )
+        if tracked:
+            detail = f"<br>State: {state_label}"
+        else:
+            live = (parent_status or {}).get(_norm(node_label(node_id)), "")
+            detail = (f"<br>{live} -- see the Tools page for why" if live
+                      else "<br>Not tracked in the gains workbook")
+        hover = f"<b>{node_label(node_id)}</b><br>{kind}{detail}"
         node_groups[kind].append((node_id, hover))
 
     # A development/tool label is a layout ANNOTATION, not scatter text, sitting BESIDE its
@@ -2661,8 +2717,12 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
                         line=dict(color=TL_SURFACE, width=1.5)),
         ))
     if None in states_present:
+        # "Deprecated / not tracked", not just "not tracked": most hollow nodes here are a
+        # parent that was deliberately retired once its child took over (that's what an
+        # evolution chain usually ENDS with), which is a result, not a missing row. Hovering
+        # the node says which of the two it is, from the live tools.xlsx status.
         fig.add_trace(go.Scatter(
-            x=[None], y=[None], mode="markers", name="Not tracked here",
+            x=[None], y=[None], mode="markers", name="Deprecated / not tracked",
             showlegend=True, legendgroup="state", legendgrouptitle_text="Fill = state",
             marker=dict(symbol="circle", size=11, color=TL_SURFACE,
                         line=dict(color=TL_BASELINE, width=2)),

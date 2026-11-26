@@ -8,6 +8,7 @@ import streamlit as st
 import kpi_cache as kcache
 import kpi_charts as kc
 import kpi_data as kd
+import kpi_gains_editor as kge
 import kpi_style as ks
 from kpi_style import anchor, page_nav
 
@@ -234,6 +235,7 @@ else:
                 render_tool_card(row)
                 if not READONLY:
                     render_tool_editor(tools_df, row)
+                    kge.render_reuse_editor(_clean(row["Name"]), f"tool{i}", READONLY)
 
     # --- Deprecated: same full card, just faded, and out of the counts/charts above ---------
     if len(deprecated_tools):
@@ -247,6 +249,7 @@ else:
                         render_tool_card(row, faded=True)
                         if not READONLY:
                             render_tool_editor(tools_df, row)
+                            kge.render_reuse_editor(_clean(row["Name"]), f"dep{i}", READONLY)
 
 # --- Full table ------------------------------------------------------------------------------
 st.subheader("All tools", anchor="tools-table")

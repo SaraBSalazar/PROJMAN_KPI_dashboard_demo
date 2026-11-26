@@ -1112,12 +1112,47 @@ def parse_tool_steps(text):
 
 
 # --- Special Projects & Tools: expected gains -------------------------------------------
-EXPECTED_GAINS_PATH = DATA_DIR / "SpecialProjects_Tools_expected_gains_v5.xlsx"
+# gains.xlsx is the live, DASHBOARD-OWNED store: plain sheets, a header on row 1, no formulas,
+# no charts -- so this module can rewrite it the same way it rewrites the ratings sheet or
+# tools.xlsx, and the Gains page can offer real editors instead of "go and edit Excel".
+#
+# It is seeded once, automatically, from SEED_GAINS_PATH below -- the hand-built
+# SpecialProjects_Tools_expected_gains_v5.xlsx this page read directly until now. That
+# workbook could never be written from here: it carries 4 real Excel charts, formula-linked
+# Summary/Reuse/Gains sheets and conditional formatting, and openpyxl drops the charts and
+# blanks every cached formula value on save -- which would leave pandas reading None out of
+# every formula cell. It stays on disk, untouched, as the archived original; nothing reads it
+# again once gains.xlsx exists.
+GAINS_PATH = DATA_DIR / "gains.xlsx"
+SEED_GAINS_PATH = DATA_DIR / "SpecialProjects_Tools_expected_gains_v5.xlsx"
+# Kept as the old name so existing callers (kpi_cache's mtime key) keep working; it now points
+# at the live file, not the seed.
+EXPECTED_GAINS_PATH = GAINS_PATH
 
-# The workbook has a title row and a note row above the real header on every sheet (the
+# The SEED workbook has a title row and a note row above the real header on every sheet (the
 # hand-built formatting that makes it readable as an Excel file also makes pandas's default
-# header guess wrong on all of them) -- each sheet's real header lands on raw row 3 (0-indexed).
-_GAINS_HEADER_ROW = 3
+# header guess wrong on all of them) -- each sheet's real header lands on raw row 3
+# (0-indexed). gains.xlsx has none of that: header on row 0, data straight after.
+_SEED_HEADER_ROW = 3
+
+# The sheets gains.xlsx holds, and the columns each one owns. Derived numbers the seed
+# workbook computed with formulas ("Gain types (n)", "Reuse level", the Summary sheet) are
+# deliberately NOT stored: this page computes all of them on every load, and a stored copy
+# could only ever drift from the lists it is supposed to be counting. The two count columns
+# that DO survive are the ones that aren't purely derived -- "Came from (n)" carries a typed
+# count for the handful of rows that record a number without listing the ids, and "User
+# projects served (n)" carries the literal text "Constant use".
+GAINS_SHEETS = ("Overview", "Gains", "Reuse", "Value", "Notes")
+GAINS_OVERVIEW_COLS = [
+    "ID", "Category", "Goal", "Project", "Status", "Output level", "Expected gains",
+    "Internal users", "External users", "Facility use / collaboration",
+    "Publication potential", "Market-equivalent value", "Use pattern",
+]
+GAINS_REUSE_COLS = [
+    "ID", "Development / tool", "Came from (n)", "Came from: user projects",
+    "User projects served (n)", "User projects served: list",
+]
+GAINS_VALUE_COLS = ["ID", "Project", "Audience", "Value basis", "Unit price (€)", "Unit"]
 
 # The Gains sheet groups its gain columns under merged headers (row 2, not read as data since
 # the header row is 3) -- GAIN_GROUPS is the dashboard's own record of that grouping (hardcoded
@@ -1288,13 +1323,118 @@ def _is_parent(dev_id, project_name, led_to_by_name):
 
 
 def _read_gains_sheet(sheet_name, valid_ids):
-    """Read one sub-sheet with the shared header row, then keep only rows whose ID is a
-    real development ID from Overview -- drops the title/note rows above the header and
-    whatever sits below the data (a totals row, a blank row, a legend row) without having
-    to hardcode row counts that would break if a row were ever added or removed."""
-    df = pd.read_excel(EXPECTED_GAINS_PATH, sheet_name=sheet_name, header=_GAINS_HEADER_ROW)
+    """Read one sub-sheet of the live gains.xlsx, then keep only rows whose ID is a real
+    development ID from Overview -- a cheap guard against a stray row typed under the data,
+    and the one place a sheet that has drifted out of step with Overview gets pruned."""
+    df = pd.read_excel(GAINS_PATH, sheet_name=sheet_name)
     df = df[df["ID"].isin(valid_ids)].reset_index(drop=True)
     return df
+
+
+def _seed_gains_workbook():
+    """Build gains.xlsx once, from the hand-made SpecialProjects_Tools_expected_gains_v5.xlsx.
+
+    Reads the seed through pandas (its formula cells come back as the values Excel last
+    cached, which is exactly what this page was already reading) and writes them out flat:
+    header on row 0, one sheet per GAINS_SHEETS entry, no formulas and no charts, so every
+    later write is a plain DataFrame.to_excel. The seed is never touched, and never read
+    again once this has run.
+
+    Columns the seed computed with formulas and this page recomputes anyway ("Gain types
+    (n)", "Reuse level (served)", the whole Summary sheet) are dropped here rather than
+    frozen into the new file -- see GAINS_SHEETS' comment. The Gains sheet's own gain columns
+    are copied as-found, whatever they happen to be: that set is read fresh on every load and
+    must stay free to change.
+    """
+    overview = pd.read_excel(SEED_GAINS_PATH, sheet_name="Overview", header=_SEED_HEADER_ROW)
+    overview.columns = [str(c).strip() for c in overview.columns]
+    overview = overview[overview["ID"].astype(str).str.strip().str.match(r"^(SP|T)\d+$", na=False)]
+    valid_ids = set(overview["ID"])
+
+    def seed_sheet(name):
+        df = pd.read_excel(SEED_GAINS_PATH, sheet_name=name, header=_SEED_HEADER_ROW)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df[df["ID"].isin(valid_ids)].reset_index(drop=True)
+
+    gains = seed_sheet("Gains")
+    gain_cols = [c for c in gains.columns
+                 if c not in ("ID", "Project", "Gain types (n)") and not c.startswith("Unnamed")]
+    reuse, value = seed_sheet("Reuse"), seed_sheet("Value")
+    notes_raw = pd.read_excel(SEED_GAINS_PATH, sheet_name="Notes", header=None)
+    notes = [str(v).strip() for v in notes_raw.iloc[1:, 0] if pd.notna(v) and str(v).strip()]
+
+    sheets = {
+        "Overview": overview[[c for c in GAINS_OVERVIEW_COLS if c in overview.columns]],
+        "Gains": gains[["ID", "Project"] + gain_cols],
+        "Reuse": reuse[[c for c in GAINS_REUSE_COLS if c in reuse.columns]],
+        "Value": value[[c for c in GAINS_VALUE_COLS if c in value.columns]],
+        "Notes": pd.DataFrame({"Note": notes}),
+    }
+    _write_gains_sheets(sheets)
+    return sheets
+
+
+def _write_gains_sheets(sheets):
+    """Write every sheet of gains.xlsx in one pass. Always all of them, never one in place:
+    the sheets cross-reference each other by ID, and a part-written file would leave the page
+    reading a Gains row for a development Overview no longer lists. Writing the lot keeps the
+    file valid at every point a reader could see it.
+
+    May raise PermissionError -- callers show the usual "it's open in Excel" message."""
+    with pd.ExcelWriter(GAINS_PATH, engine="openpyxl") as writer:
+        for name in GAINS_SHEETS:
+            df = sheets.get(name)
+            if df is None:
+                continue
+            df.to_excel(writer, sheet_name=name, index=False)
+
+
+def load_gains_sheets():
+    """The raw sheets of gains.xlsx as DataFrames, keyed by sheet name -- what the EDITORS
+    read and write back. Seeds the file from the archived v5 workbook the first time.
+
+    Deliberately raw: no state decided, no names resolved, no derived counts. load_expected_gains
+    below is the one that folds in live Special Projects/Tools status for DISPLAY; an editor
+    saving a row must not write any of that back into the store."""
+    if not GAINS_PATH.exists():
+        return _seed_gains_workbook()
+    sheets = pd.read_excel(GAINS_PATH, sheet_name=None)
+    for df in sheets.values():
+        df.columns = [str(c).strip() for c in df.columns]
+    return sheets
+
+
+def save_gains_sheets(sheets):
+    """Write the gains store back, re-syncing the name columns first.
+
+    Overview owns each development's name; the Gains/Reuse/Value sheets each carry a copy for
+    readability (the seed workbook had them as `=Overview!D5` formulas, which is exactly the
+    same thing done with less ceremony). Rewriting them from Overview on every save is what
+    stops a rename in one place leaving three sheets labelled with the old name."""
+    sheets = {name: df.copy() for name, df in sheets.items()}
+    overview = sheets.get("Overview")
+    if overview is not None:
+        name_by_id = dict(zip(overview["ID"], overview["Project"]))
+        for sheet_name, col in (("Gains", "Project"), ("Reuse", "Development / tool"),
+                                 ("Value", "Project")):
+            df = sheets.get(sheet_name)
+            if df is not None and len(df):
+                df[col] = [name_by_id.get(i, n) for i, n in zip(df["ID"], df.get(col, df["ID"]))]
+    _write_gains_sheets(sheets)
+
+
+def next_development_id(overview, category):
+    """The next free SP../T.. id for a new development, numbered within its own series so the
+    ids stay meaningful (SP = Special Project, T = Tool). Counts from the highest existing
+    number rather than the row count, so deleting a row never hands the next one a duplicate."""
+    prefix = "SP" if category == "Special Project" else "T"
+    used = [
+        int(m.group(1))
+        for m in (re.match(rf"^{prefix}(\d+)$", str(i).strip(), re.IGNORECASE)
+                  for i in overview["ID"])
+        if m
+    ]
+    return f"{prefix}{max(used, default=0) + 1:02d}"
 
 
 def _decide_state(category, project_name, status, goals_by_name, tools_by_name,
@@ -1411,6 +1551,9 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
         "User projects served" columns that match no project in `project_lookup` across any
         period -- a typo catcher (only populated when `project_lookup` is given; empty, not
         wrongly "all unmatched", when it's None).
+      - "lineage_parent_status": for a lineage parent with no row in this workbook, its live
+        tools.xlsx status (today only ever "Deprecated"), keyed by normalized name. Lets the
+        lineage chart say why such a node has no Delivered/In use/Potential state of its own.
       - "led_to_by_name": the full lineage reverse-index, keyed by EVERY parent identity seen
         in any "Came from" cell (a workbook ID like "SP01", or a normalized free-text name) --
         not just ones with their own Overview row, so a tool like "motif-scan-from-github"
@@ -1420,7 +1563,179 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
     May raise FileNotFoundError / PermissionError -- callers show a friendly message, same
     as load_tools().
     """
-    overview = pd.read_excel(EXPECTED_GAINS_PATH, sheet_name="Overview", header=_GAINS_HEADER_ROW)
+    if not GAINS_PATH.exists():
+        return _seed_gains_workbook()
+    sheets = pd.read_excel(GAINS_PATH, sheet_name=None)
+    for df in sheets.values():
+        df.columns = [str(c).strip() for c in df.columns]
+    return sheets
+
+
+def save_gains_sheets(sheets):
+    """Write the gains store back, re-syncing the name columns first.
+
+    Overview owns each development's name; the Gains/Reuse/Value sheets each carry a copy for
+    readability (the seed workbook had them as `=Overview!D5` formulas, which is exactly the
+    same thing done with less ceremony). Rewriting them from Overview on every save is what
+    stops a rename in one place leaving three sheets labelled with the old name."""
+    sheets = {name: df.copy() for name, df in sheets.items()}
+    overview = sheets.get("Overview")
+    if overview is not None:
+        name_by_id = dict(zip(overview["ID"], overview["Project"]))
+        for sheet_name, col in (("Gains", "Project"), ("Reuse", "Development / tool"),
+                                 ("Value", "Project")):
+            df = sheets.get(sheet_name)
+            if df is not None and len(df):
+                df[col] = [name_by_id.get(i, n) for i, n in zip(df["ID"], df.get(col, df["ID"]))]
+    _write_gains_sheets(sheets)
+
+
+def next_development_id(overview, category):
+    """The next free SP../T.. id for a new development, numbered within its own series so the
+    ids stay meaningful (SP = Special Project, T = Tool). Counts from the highest existing
+    number rather than the row count, so deleting a row never hands the next one a duplicate."""
+    prefix = "SP" if category == "Special Project" else "T"
+    used = [
+        int(m.group(1))
+        for m in (re.match(rf"^{prefix}(\d+)$", str(i).strip(), re.IGNORECASE)
+                  for i in overview["ID"])
+        if m
+    ]
+    return f"{prefix}{max(used, default=0) + 1:02d}"
+
+
+def _decide_state(category, project_name, status, goals_by_name, tools_by_name,
+                   served_ids, is_parent):
+    """The core Delivered / In use / Potential call for one development -- a pure function of
+    plain values (no DataFrame access), so every branch is directly unit-testable.
+
+    Delivered only ever comes from a Special Project's own Completed date
+    (`goals_by_name[name]` is `_finished`), or, as a fallback with no live match at all, the
+    workbook's own Status column reading "Completed" -- there's no "delivered because XYZ"
+    shortcut the way there is for In use.
+
+    In use is Delivered's weaker sibling -- demonstrably being used, but not (yet) finished
+    and banked -- and ANY of these is enough on its own, independent of how the base status
+    below was decided:
+      1. `served_ids` is non-empty (it serves at least one real user project), or
+      2. `is_parent` is True (some OTHER development names this one as where it came from --
+         itself proof of use, with no served project required), or
+      3. it's matched as a Tool whose live Status isn't Deprecated.
+    Live dashboard data wins the BASE status when it's available and matches by name; the
+    Excel's own Status column is only a fallback for the base -- the workbook's Notes sheet
+    says those statuses were filled in as a blanket guess ("Tools = In use, Special Projects
+    = In development"), not verified per row. Criteria 1/2 above can still elevate that
+    fallback-decided base from Potential to In use.
+
+    Returns (state, match_source) -- match_source ("ratings"/"tools"/"status") names which
+    live table decided the BASE status, same meaning as before the 3-state split."""
+    variants = _name_variants(project_name)
+    delivered = False
+    in_use = False
+    match_source = "status"
+
+    if category == "Special Project" and goals_by_name is not None:
+        for v in variants:
+            if v in goals_by_name:
+                delivered = bool(goals_by_name[v])
+                match_source = "ratings"
+                break
+
+    if match_source == "status" and category == "Tools" and tools_by_name is not None:
+        for v in variants:
+            if v in tools_by_name:
+                in_use = tools_by_name[v] != "deprecated"
+                match_source = "tools"
+                break
+
+    if match_source == "status":
+        norm_status = _norm_name(status)
+        if norm_status in _FALLBACK_DELIVERED_STATUSES:
+            delivered = True
+        elif norm_status in _FALLBACK_IN_USE_STATUSES:
+            in_use = True
+
+    if delivered:
+        return "Delivered", match_source
+    if in_use or bool(served_ids) or is_parent:
+        return "In use", match_source
+    return "Potential", match_source
+
+
+def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
+    """Read SpecialProjects_Tools_expected_gains_v5.xlsx -- the catalogue of Special
+    Projects' and Tools' expected (or already-delivered) gains -- and fold it together with
+    whatever's live on the dashboard. Optional `goals_df` (load_goals()) and `tools_df`
+    (load_tools()) let a Special Project / Tool's real status override the Excel's own
+    Status column for the Delivered/In use/Potential call (see _decide_state); pass neither
+    to fall back to the Excel alone, e.g. from a context that hasn't loaded them. Optional
+    `project_lookup` (build_project_lookup()'s result) joins the Reuse sheet's DNA_###/STAT_###
+    ids to the real project tracker, across every reporting period -- see "unmatched_reuse_ids"
+    below for what happens when an id has no match.
+
+    Returns a dict:
+      - "developments": one row per Overview row, all its columns cleaned (the 5 x/blank
+        flag columns parsed to bool), plus "active" (bool, state != "Potential"), "state"
+        ("Delivered"/"In use"/"Potential"), "match_source" ("ratings"/"tools"/"status" --
+        which rule decided the BASE status, see _decide_state), "led_to" (readable names of
+        other developments naming this one as a parent), and "constant_use" (bool, from Use
+        pattern).
+      - "gains_long": tidy, one row per (development, gain) marked "x" -- ID, Project,
+        Category, Gain, Group, active, state.
+      - "gain_summary": one row per gain ACTUALLY present on the Gains sheet (even ones with
+        zero rows) -- Gain, Group, n_delivered, n_in_use, n_potential, n_active (= delivered +
+        in use), n_total, active_projects, potential_projects, delivered_projects,
+        in_use_projects (name lists, for chart hover), sorted by n_total descending. The gain
+        set is read fresh from the sheet every load (see "gain_columns" below), not a fixed
+        list of 10 -- works whether the sheet has 9, 10, 11 or 12 gain columns.
+      - "gain_columns": the gain column headers actually found between "Project" and "Gain
+        types (n)" on the Gains sheet, in sheet order -- what gain_summary/gains_long iterate
+        over, and what the charts need to size/order themselves instead of assuming GAIN_GROUPS'
+        historical 10.
+      - "gain_groups": {gain column name: group name} for exactly the columns in
+        "gain_columns" (GAIN_GROUPS' mapping where the name is recognized, else
+        GAIN_FALLBACK_GROUP) -- what the charts use to band/colour columns, instead of
+        consulting the static GAIN_GROUPS dict directly.
+      - "ungrouped_gains": gain column names present on the sheet but NOT in GAIN_GROUPS --
+        i.e. silently mapped to GAIN_FALLBACK_GROUP above rather than a group Sara actually
+        picked for them. Surfaced in the page's Data health section so a newly-added column
+        with an unrecognized name doesn't quietly land in the wrong theme unnoticed.
+      - "reuse": the Reuse sheet, come_from/serves columns as real lists, came_from_n /
+        serves_n as nullable ints (came_from_n counts ONLY the DNA_*/STAT_* ids -- see
+        came_from_projects below), constant_use bool, led_to, joined to active/state.
+        came_from_ids / serves_ids keep their old meaning (the raw token lists); on top of
+        those: came_from_projects (DNA_*/STAT_* ids only), came_from_developments (this
+        workbook's own ids, or a bare name, for anything in "Came from" that is NOT a user
+        project -- lineage, not reuse).
+      - "value": the Value sheet, unit_price numeric-or-None, joined to active/state.
+      - "notes": the Notes sheet's free-text lines as a list of strings (title row dropped).
+      - "unmatched_tools": non-deprecated tools_df names with no row in this workbook at all
+        (by name, alias included) -- a data-health check, not restricted to rows categorized
+        "Tools" (e.g. a tool that's actually catalogued here as a Special Project still
+        counts as matched).
+      - "unmatched_projects": same idea for goals_df project names.
+      - "unmatched_reuse_ids": DNA_###/STAT_### ids used in the Reuse sheet's "Came from" or
+        "User projects served" columns that match no project in `project_lookup` across any
+        period -- a typo catcher (only populated when `project_lookup` is given; empty, not
+        wrongly "all unmatched", when it's None).
+      - "lineage_parent_status": for a lineage parent with no row in this workbook, its live
+        tools.xlsx status (today only ever "Deprecated"), keyed by normalized name. Lets the
+        lineage chart say why such a node has no Delivered/In use/Potential state of its own.
+      - "lineage_parent_status": for a lineage parent with no row in this workbook, its live
+        tools.xlsx status (today only ever "Deprecated"), keyed by normalized name. Lets the
+        lineage chart say why such a node has no Delivered/In use/Potential state of its own.
+      - "led_to_by_name": the full lineage reverse-index, keyed by EVERY parent identity seen
+        in any "Came from" cell (a workbook ID like "SP01", or a normalized free-text name) --
+        not just ones with their own Overview row, so a tool like "motif-scan-from-github"
+        that isn't catalogued here at all can still be looked up (`led_to_by_name[norm_name]`)
+        without KeyError. "developments"/"reuse"["led_to"] is this same dict filtered down to
+        workbook rows and resolved to display names, for the page to render directly.
+    May raise FileNotFoundError / PermissionError -- callers show a friendly message, same
+    as load_tools().
+    """
+    if not GAINS_PATH.exists():
+        _seed_gains_workbook()  # first run: build the live store from the archived workbook
+    overview = pd.read_excel(GAINS_PATH, sheet_name="Overview")
     overview.columns = [str(c).strip() for c in overview.columns]
     overview = overview[overview["ID"].astype(str).str.strip() != ""].reset_index(drop=True)
     for col in ["ID", "Category", "Goal", "Project", "Status", "Output level", "Expected gains"]:
@@ -1477,6 +1792,13 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
 
     came_from_projects_col, came_from_developments_col = [], []
     led_to_by_name = {}
+    # A lineage parent with no row in THIS workbook still has a live status in tools.xlsx --
+    # most usefully "Deprecated", with its reason, which is exactly what a parent that got
+    # folded into its own child looks like (notion-to-elab -> Project Closer). Collected here,
+    # keyed by the parent's normalized name, so the lineage chart can say WHY a node has no
+    # Delivered/In use/Potential state instead of just "not tracked". Only non-blank statuses
+    # are recorded; a parent that's simply absent from this workbook stays out of the dict.
+    lineage_parent_status = {}
     for dev_id, tokens in zip(reuse["ID"], reuse["came_from_ids"]):
         child_name = project_name_by_id.get(dev_id, dev_id)
         projects, developments_here = [], []
@@ -1487,6 +1809,12 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
             else:
                 developments_here.append(label)
                 led_to_by_name.setdefault(key, []).append(child_name)
+                if key not in valid_ids and tools_by_name:
+                    for variant in _name_variants(label):
+                        status = tools_by_name.get(variant, "")
+                        if status and status != "nan":
+                            lineage_parent_status[_norm_name(label)] = status.title()
+                            break
         came_from_projects_col.append(projects)
         came_from_developments_col.append(developments_here)
     reuse["came_from_projects"] = came_from_projects_col
@@ -1618,9 +1946,9 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
     value["state"] = value["ID"].map(state_by_id)
 
     # --- Notes: free text, title row dropped ------------------------------------------------
-    notes_raw = pd.read_excel(EXPECTED_GAINS_PATH, sheet_name="Notes", header=None)
+    notes_raw = pd.read_excel(GAINS_PATH, sheet_name="Notes")
     notes = [
-        str(v).strip() for v in notes_raw.iloc[1:, 0]
+        str(v).strip() for v in notes_raw.iloc[:, 0]
         if pd.notna(v) and str(v).strip()
     ]
 
@@ -1673,6 +2001,7 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
         "unmatched_reuse_ids": unmatched_reuse_ids,
         "project_lookup": project_lookup,
         "led_to_by_name": led_to_by_name,
+        "lineage_parent_status": lineage_parent_status,
     }
 
 

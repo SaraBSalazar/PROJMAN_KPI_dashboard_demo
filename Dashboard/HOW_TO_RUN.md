@@ -20,7 +20,7 @@ pages under section headings instead of listing them flat:
   🗂️ Projects Review (`pages/1_Projects_Review.py`)
 - **Development** — 🎯 Special Projects (`pages/2_Special_Projects.py`),
   🛠️ Tools & AI Skills (`pages/3_Tools.py`), and 💡 Gains & Outputs
-  (`pages/5_Gains.py`, read-only — what the special projects and tools are expected to
+  (`pages/5_Gains.py` — what the special projects and tools are expected to
   deliver, and how much of that is **Delivered** (finished, gains banked), **In use &
   developing** (not finished, but already serving a real user project, or having spawned
   another development, or a tool that isn't deprecated), or still **Potential**)
@@ -244,7 +244,8 @@ want (weekly, daily, ...). A few things worth knowing:
 | Week tab → "➕ New tag" (project / category / major task)           | `Data/custom_tags.json` (so new tags stay in the dropdowns across restarts, even before they're used in a saved row) |
 | Tools & AI Skills → "Edit a tool" and the "All tools" table         | `Data/tools.xlsx`                                                                                                    |
 | Projects Review → Turnaround → "⏸ Pauses" note / forgive checkbox  | `Data/project_pause_notes.json` (forgiving a pause subtracts just its days from that project's turnaround figures, rather than excluding the whole project) |
-| Gains & Outputs                                                     | *nothing* — this page is read-only. It reads `Data/SpecialProjects_Tools_expected_gains_v5.xlsx` and cross-checks it against the live ratings and tools data; edit that workbook directly to change what it shows. |
+| Gains & Outputs → "✏️ Edit what delivers what" / "✏️ Edit value potential" | `Data/gains.xlsx` |
+| Special Projects / Tools card → "🔗 Reuse & lineage"                | `Data/gains.xlsx` (Reuse sheet) — the same control on both pages |
 
 Everything in the table above writes to disk immediately when you click its Save/Add
 button — nothing is held only in the browser session, and everything you can change ends up

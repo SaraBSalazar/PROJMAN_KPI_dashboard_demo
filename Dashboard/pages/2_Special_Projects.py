@@ -12,6 +12,7 @@ from streamlit.errors import StreamlitAPIException
 import kpi_cache as kcache
 import kpi_charts as kc
 import kpi_data as kd
+import kpi_gains_editor as kge
 import kpi_style as ks
 from kpi_style import anchor, page_nav
 
@@ -479,6 +480,9 @@ else:
             render_card(row)
         if not READONLY:
             render_goal_editor(goals_df, row, project_names)
+            # Same control as every Tool card: one development's Reuse row, which is also the
+            # one cell the Gains page's lineage tree is drawn from.
+            kge.render_reuse_editor(selected_name, "sp", READONLY)
     with right:
         with st.container(key="tasks-panel"):
             # Always the trimmed name: checklists are keyed by project name, and keying them

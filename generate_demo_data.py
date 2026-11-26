@@ -762,6 +762,16 @@ def build_expected_gains():
     print(f"wrote {path} ({len(EXPECTED_GAINS_OVERVIEW)} developments, "
           f"{len(GAIN_COLUMNS)} gain columns, {len(EXPECTED_GAINS_VALUE)} value rows)")
 
+    # This workbook is only ever a SEED now: the dashboard builds Data/gains.xlsx from it on
+    # first load and reads (and writes) that from then on, never this file again. So a
+    # regenerated seed means nothing at all unless the store built from the old one is
+    # cleared -- otherwise the app keeps serving the previous run's data and this script
+    # looks broken. Deleting it is safe precisely because it is derived here.
+    store = DATA_DIR / "gains.xlsx"
+    if store.exists():
+        store.unlink()
+        print(f"removed {store} (rebuilt from the seed above on the next page load)")
+
 
 # --- 6) Custom tags (dropdown memory) ------------------------------------------------------
 def build_custom_tags():

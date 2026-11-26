@@ -176,7 +176,8 @@ tied to its own institution's fiscal calendar — see the note below.)
 | `Data/custom_tags.json` | Remembers new dropdown options until they're used in a saved row. |
 | `Data/tools.xlsx` | Tools/automations inventory. |
 | `Data/project_pause_notes.json` | Per-pause notes and "forgive" flags on the turnaround chart (Projects Review) — a forgiven pause's days are excluded from that project's turnaround medians. |
-| `Data/SpecialProjects_Tools_expected_gains_v5.xlsx` | What each special project and tool is expected to deliver, which user projects it grew out of and which benefit from it (Gains & Outputs). Read-only to the dashboard — gain columns are discovered from the sheet, so adding a new kind of gain needs no code change. |
+| `Data/gains.xlsx` | What each special project and tool is expected to deliver, which user projects it grew out of and which benefit from it (Gains & Outputs). Written by the app: gain toggles and the value table on that page, reuse and lineage on each Special Project / Tool card. Built automatically on first load from the workbook below, so it isn't in git. Gain columns are discovered from the sheet, so adding a new kind of gain needs no code change. |
+| `Data/SpecialProjects_Tools_expected_gains_v5.xlsx` | The seed `gains.xlsx` is built from, once. Kept because it is what `generate_demo_data.py` writes; nothing reads it after the store exists. |
 
 The two JSON files are the dashboard's working copies because they hold shapes (a nested
 to-do list, free-text cards) that don't map onto any existing spreadsheet column; the

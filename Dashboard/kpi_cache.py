@@ -117,6 +117,22 @@ def load_expected_gains():
     mtime_key = (_mtime(kd.EXPECTED_GAINS_PATH), _mtime(kd.GOALS_PATH), _mtime(kd.TOOLS_PATH))
     return _load_expected_gains(mtime_key, period_key)
 
+@st.cache_data(show_spinner=False)
+def _load_gains_sheets(mtime_key):
+    return kd.load_gains_sheets()
+
+
+def load_gains_sheets():
+    """The raw gains.xlsx sheets the editors read (kpi_gains_editor). Cached on the file's own
+    mtime for the same reason every other loader here is, but it matters more for this one: the
+    Tools page draws a reuse editor inside EVERY card, so an uncached read would re-open the
+    workbook sixteen times per rerun. A save bumps the mtime, so the next rerun sees the change
+    with no cache clearing at the call site.
+
+    st.cache_data hands back a copy per caller, so an editor is free to mutate what it gets
+    before writing it back -- which is exactly what they all do."""
+    return _load_gains_sheets(_mtime(kd.GAINS_PATH))
+
 
 @st.cache_data(show_spinner=False)
 def _load_project_tasks(mtime_key):

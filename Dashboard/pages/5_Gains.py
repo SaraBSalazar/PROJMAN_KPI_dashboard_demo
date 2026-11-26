@@ -1,9 +1,11 @@
 """Gains & Outputs — what the Special Projects and Tools built along the way are expected to
 deliver, and how much of that is Delivered / In use / still Potential, read live from
 SpecialProjects_Tools_expected_gains_v5.xlsx (kd.load_expected_gains, folded together with the
-live Special Projects and Tools status). Entirely read-only: this page has no editor, no
-save button, nothing it writes back -- the workbook and the 3-state rule both live in
-kpi_data.py (kd._decide_state)."""
+live Special Projects and Tools status). The charts are read-only; the gain toggles, the
+value table and the per-development Reuse/lineage control (that last one lives on the Special
+Projects and Tools cards, not here) all write back to gains.xlsx through kpi_gains_editor.
+The 3-state rule is never editable anywhere -- it is derived, in kpi_data.py (kd._decide_state).
+"""
 
 import pandas as pd
 import streamlit as st
@@ -11,6 +13,7 @@ import streamlit as st
 import kpi_cache as kcache
 import kpi_charts as kc
 import kpi_data as kd
+import kpi_gains_editor as kge
 import kpi_style as ks
 from kpi_style import anchor, page_nav
 
@@ -33,7 +36,7 @@ ADA_COLOR = kd.ADA_PERSONAL_COLOR_DARK if st.context.theme.type == "dark" else k
 
 if st.query_params.get("readonly") is not None:
     st.session_state["readonly"] = st.query_params.get("readonly") in ("1", "true", "yes", "True")
-READONLY = st.session_state.get("readonly", False)  # no editing controls live here either way
+READONLY = st.session_state.get("readonly", False)
 
 
 ks.header(
@@ -43,7 +46,6 @@ ks.header(
 )
 page_nav([
     ("Overview", "gains-overview"),
-    ("Delivered / in use / potential", "gains-active-potential"),
     ("What delivers what", "gains-matrix"),
     ("Audience & outputs", "gains-audience"),
     ("Value potential", "gains-value"),
@@ -51,17 +53,19 @@ page_nav([
     ("Lineage", "gains-lineage-tree"),
     ("Data health", "gains-health"),
 ])
-st.caption("Read live from Data/SpecialProjects_Tools_expected_gains_v5.xlsx, cross-checked "
-           "against live Special Projects and Tools status.")
+st.caption("Read live from Data/gains.xlsx -- editable right here on this page and on the "
+           "Special Projects / Tools cards -- cross-checked against live Special Projects "
+           "and Tools status.")
 
 try:
     data = kcache.load_expected_gains()
 except FileNotFoundError:
-    st.error(f"SpecialProjects_Tools_expected_gains_v5.xlsx not found in {kd.DATA_DIR} -- "
-             "this page has nothing to read from until that workbook exists.")
+    st.error(f"Neither gains.xlsx nor the workbook it is first built from "
+             f"(SpecialProjects_Tools_expected_gains_v5.xlsx) is in {kd.DATA_DIR} -- this page "
+             "has nothing to read from until one of them exists.")
     st.stop()
 except PermissionError:
-    st.error("Couldn't read the gains workbook (or one of the files it cross-checks against -- "
+    st.error("Couldn't read gains.xlsx (or one of the files it cross-checks against -- "
              "Special_Projects_Ratings.xlsx, tools.xlsx). It's open in Excel (or locked by "
              "OneDrive) -- close it and refresh this page.")
     st.stop()
@@ -135,8 +139,12 @@ with st.expander(f"ℹ️ How 'Delivered', '{IN_USE_LABEL}' and 'Potential' are 
         "underlying data, versus `\"ratings\"` or `\"tools\"` for a live match."
     )
 
-# --- Delivered / in use / potential gains --------------------------------------------------
-st.subheader("Delivered, in use & potential gains", anchor="gains-active-potential")
+# The "Delivered, in use & potential gains" stacked bar chart used to sit here. It was
+# fig_gains_matrix's COLUMN MARGIN drawn as a second picture -- a bar's length was the number
+# of dots in that gain's column and its segments were those dots' own state colours -- so the
+# page carried two renderings of one table that had to be kept in agreement. The matrix now
+# carries the margins itself (row totals right, column totals below), which is the whole of
+# what the bar chart said. Its one piece of genuinely derived commentary survives below.
 
 
 def _insight_caption(gain_summary):
@@ -155,24 +163,43 @@ def _insight_caption(gain_summary):
             f"largely banked; the outward-facing one is still ahead.")
 
 
-st.plotly_chart(kc.fig_gains_active_potential(gain_summary, STATE_COLORS, GROUP_COLORS), width="stretch")
-st.caption(f"Bar colour is still Delivered/{IN_USE_LABEL}/Potential throughout -- the coloured "
-           "band and name on the right mark which of the 4 gain themes (Efficiency, Capability, "
-           "Innovation & visibility, Reach & relationships) each block of rows belongs to.")
-st.caption(_insight_caption(gain_summary))
-
 # --- What delivers what ------------------------------------------------------------------
 st.subheader("What delivers what", anchor="gains-matrix")
 st.caption(f"Every dot in a row shares that development's state -- Delivered developments read "
-           f"green, {IN_USE_LABEL} blue, Potential grey (and hatched), top to bottom. Every dot "
-           "is filled: a gap here means that development doesn't deliver that gain, never that "
-           f"it's only potential. The coloured header strip above the columns groups the "
-           f"{len(gain_columns)} gains into their 4 themes -- same colours and same grouping as "
-           "the chart above.")
+           f"green, {IN_USE_LABEL} blue, Potential grey, top to bottom. Every dot is filled: a "
+           "gap here means that development doesn't deliver that gain, never that it's only "
+           f"potential. The coloured header strip groups the {len(gain_columns)} gains into "
+           "their 4 themes. **Totals** sit on both margins -- gain types per development down "
+           "the right, developments per gain along the bottom; hover a column total for its "
+           f"Delivered/{IN_USE_LABEL}/Potential split.")
 st.plotly_chart(
     kc.fig_gains_matrix(gains_long, developments, STATE_COLORS, gain_columns, gain_groups, GROUP_COLORS),
     width="stretch",
 )
+st.caption(_insight_caption(gain_summary))
+
+if not READONLY:
+    # Directly under the chart it feeds, not in a settings corner: ticking a box here is the
+    # same action as adding a dot up there, and the two being adjacent is what makes that
+    # obvious without explaining it.
+    with st.expander("✏️ Edit what delivers what"):
+        st.caption("Tick a box and that development claims that gain. **State** is derived "
+                   "from live Special Projects / Tools status and can't be set here -- mark a "
+                   "project finished on its own page, or record reuse on its card, to move it.")
+        try:
+            gains_sheets = kcache.load_gains_sheets()
+        except (FileNotFoundError, PermissionError):
+            st.error("Couldn't open gains.xlsx to edit — it's open in Excel (or locked by "
+                     "OneDrive). Close it and refresh.")
+        else:
+            state_by_id = dict(zip(developments["ID"], developments["state"]))
+            kge.render_gain_toggles(gains_sheets, gain_columns, state_by_id)
+            st.divider()
+            st.markdown("**Add a development**")
+            st.caption("Anything on the Tools or Special Projects pages with no row here "
+                       "doesn't appear on this page at all. These are the ones missing:")
+            kge.render_add_development(
+                kcache.load_gains_sheets(), sorted(unmatched_tools + unmatched_projects))
 
 # --- Audience & outputs -------------------------------------------------------------------
 st.subheader("Audience & outputs", anchor="gains-audience")
@@ -232,6 +259,19 @@ if len(value):
 else:
     st.caption("No value rows recorded yet.")
 
+if not READONLY:
+    with st.expander("✏️ Edit value potential"):
+        st.caption("A development can only be picked from the list -- the row is stored "
+                   "against its id, so a free-typed name would have nothing to attach to. "
+                   "Leave the price blank when none was researched; the basis text still shows.")
+        try:
+            value_sheets = kcache.load_gains_sheets()
+        except (FileNotFoundError, PermissionError):
+            st.error("Couldn't open gains.xlsx to edit — it's open in Excel (or locked by "
+                     "OneDrive). Close it and refresh.")
+        else:
+            kge.render_value_editor(value_sheets)
+
 # --- Reuse: built out of real user work, and who benefits from it --------------------------
 st.subheader("Reuse: built out of real user work, and who benefits", anchor="gains-reuse")
 st.plotly_chart(kc.fig_reuse_both_directions(reuse, STATE_COLORS, project_lookup), width="stretch")
@@ -261,8 +301,9 @@ st.caption("ONLY development/tool -> development/tool edges -- a Special Project
            "Project. No user-project id is ever drawn on this chart (that's the Reuse chart "
            "above). Shape is Special Project / Tool / AI Skill; fill is the same "
            f"Delivered/{IN_USE_LABEL}/Potential colour as every other chart on this page; a "
-           "hollow node is a parent with no row of its own in the gains workbook yet, so it "
-           "has no state to show (hover any node for its details).")
+           "hollow node has no state to show -- it's either deprecated (the usual, healthy "
+           "end for a parent its child took over -- the Tools page holds the reason) or just "
+           "not tracked in the gains workbook. Hover any node to see which.")
 n_evolved = int(reuse["came_from_developments"].map(len).sum())
 if not n_evolved:
     st.info("No development has evolved into another yet -- every **Came from** entry on the "
@@ -270,25 +311,38 @@ if not n_evolved:
             "development id (e.g. `SP01`) or a tool/Special-Project name under another "
             "development's **Came from** column there to grow this tree.")
 else:
-    st.plotly_chart(kc.fig_lineage_tree(developments, reuse, STATE_COLORS), width="stretch")
+    st.plotly_chart(
+        kc.fig_lineage_tree(developments, reuse, STATE_COLORS,
+                            parent_status=data["lineage_parent_status"]),
+        width="stretch",
+    )
     st.caption("A development can be expected to spawn more than one tool -- each new one "
-               "joins this chart on its own the moment it gets a row in the gains workbook "
-               "naming its parent under the **Came from** column.")
+               "joins this chart on its own the moment its card names that parent under "
+               "**Grew out of**.")
 
 # --- Data health: only worth a section if there's actually something to flag ---------------
+# Shrinking by design. Three of its checks existed because this data was typed into Excel by
+# hand, where a mistyped "GEN_O31" silently vanished from a chart with no error anywhere; now
+# that projects are picked from a dropdown and developments from the live list, those three
+# can only fire on rows that predate the editors (or a hand edit made in Excel afterwards).
+# What it still earns its place for is the last check -- a gain column the code has never been
+# told about, which no editor can catch because the column set is deliberately open-ended.
 if unmatched_tools or unmatched_projects or unmatched_reuse_ids or ungrouped_gains or notes:
     st.subheader("Data health", anchor="gains-health")
     if unmatched_tools:
-        st.caption("Tools with no row in the gains workbook at all (not counted on this page "
-                   "until they get one): " + ", ".join(unmatched_tools))
+        st.caption("Tools with no row in the gains store at all (not counted on this page "
+                   "until they get one -- add them under **✏️ Edit what delivers what** above): "
+                   + ", ".join(unmatched_tools))
     if unmatched_projects:
-        st.caption("Special Projects with no row in the gains workbook at all (not counted on "
-                   "this page until they get one): " + ", ".join(unmatched_projects))
+        st.caption("Special Projects with no row in the gains store at all (not counted on "
+                   "this page until they get one -- add them under **✏️ Edit what delivers "
+                   "what** above): " + ", ".join(unmatched_projects))
     if unmatched_reuse_ids:
-        st.caption("Reuse-sheet user project ids with no match in the project tracker (any "
-                   "reporting period) -- likely a typo: " + ", ".join(unmatched_reuse_ids))
+        st.caption("Reuse user project ids with no match in the project tracker (any "
+                   "reporting period) -- a leftover typo from before these were picked from a "
+                   "list; fix it on that development's card: " + ", ".join(unmatched_reuse_ids))
     if ungrouped_gains:
-        st.caption("Gain column(s) on the Gains sheet not yet assigned to a group (shown under "
+        st.caption("Gain column(s) in the gains store not yet assigned to a group (shown under "
                    f"**{kd.GAIN_FALLBACK_GROUP}** for now until the code recognizes the name): "
                    + ", ".join(ungrouped_gains))
     if notes:
