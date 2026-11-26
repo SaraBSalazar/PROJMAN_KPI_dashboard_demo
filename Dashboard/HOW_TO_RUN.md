@@ -10,6 +10,26 @@ streamlit run KPI_Report.py
 Opens automatically at `http://localhost:8501`. Only reachable from this computer.
 Stop it with `Ctrl+C` in the terminal.
 
+### Page structure
+
+`KPI_Report.py` is just the router (`st.navigation({...})`) — it stays the file you run,
+but its own Week/Month/Year content lives in `pages/0_Overview.py` so the sidebar can group
+pages under section headings instead of listing them flat:
+
+- **Reporting** — 📊 Overview (`pages/0_Overview.py`, the default page) and
+  🗂️ Projects Review (`pages/1_Projects_Review.py`)
+- **Development** — 🎯 Special Projects (`pages/2_Special_Projects.py`),
+  🛠️ Tools & AI Skills (`pages/3_Tools.py`), and 💡 Gains & Outputs
+  (`pages/5_Gains.py`, read-only — what the special projects and tools are expected to
+  deliver, and how much of that is **Delivered** (finished, gains banked), **In use &
+  developing** (not finished, but already serving a real user project, or having spawned
+  another development, or a tool that isn't deprecated), or still **Potential**)
+- **Data** — ➕ Add Data (`pages/4_Add_Data.py`)
+
+Because `st.navigation` is used, Streamlit's older "every file in `pages/` becomes a page"
+discovery is switched off — a page appears in the sidebar only if it is listed in the
+router, which is why the files can stay in `pages/` without being listed twice.
+
 ## Testing this demo
 
 The real test is cloning it fresh somewhere else entirely, not just running it from a

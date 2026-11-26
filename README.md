@@ -109,7 +109,8 @@ generate_demo_data.py   writes every file under Data/ from invented placeholders
 
 | File | Role |
 | --- | --- |
-| [KPI_Report.py](Dashboard/KPI_Report.py) | Main page — Week / Month / Year tabs over the time log, plus the period selector and glossary every page inherits. |
+| [KPI_Report.py](Dashboard/KPI_Report.py) | The entrypoint, and now only a router: it declares the sidebar's sections with `st.navigation({...})` and runs the selected page. Still the file you run. |
+| [pages/0_Overview.py](Dashboard/pages/0_Overview.py) | The landing page — Week / Month / Year tabs over the time log, plus the period selector and glossary every page inherits. (This was the entrypoint's own body until the sections went in.) |
 | [kpi_data.py](Dashboard/kpi_data.py) | All file reading, period discovery, and shared computation. Deliberately **Streamlit-free** so the snapshot exporter can import it headless. |
 | [kpi_cache.py](Dashboard/kpi_cache.py) | `st.cache_data` wrappers keyed on each source file's mtime — fast reruns, but any edit (from the app or from Excel) invalidates the key and reloads. |
 | [kpi_charts.py](Dashboard/kpi_charts.py) | Plotly figure builders. Light/dark themes are module globals, so `set_theme()` re-themes everything that follows. |
