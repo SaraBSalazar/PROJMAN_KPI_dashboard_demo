@@ -146,6 +146,7 @@ td.num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-num
 .tasks .due { margin-left: auto; color: var(--ink-3); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
 .tasks .done-task { color: var(--ink-3); text-decoration: line-through; }
 .predicted { background: var(--accent-soft); color: var(--accent); border-radius: 6px; display: inline-block; padding: 3px 10px; font-size: 13px; font-weight: 600; margin: 4px 0 2px; }
+.finished { background: rgba(12,163,12,.12); color: #0ca30c; border-radius: 6px; display: inline-block; padding: 3px 10px; font-size: 13px; font-weight: 600; margin: 4px 0 2px; }
 footer { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 14px; color: var(--ink-3); font-size: 12.5px; }
 """
 
@@ -510,10 +511,16 @@ def period_panels(pkey, period, df, raw_df, category_order, cat_colors, task_cat
     # The per-project journey and the median turnaround figures -- worth sharing. The
     # dashboard's "Needs attention" list is deliberately NOT exported: stalling-project
     # tracking is internal working state, not something to hand to a reader.
-    lead_df = kd.lead_time_table(projects, df_period, period_end=period["end"])
+    # pause_notes has to go INTO lead_time_table, not just to the chart afterwards: that's
+    # where each paused week picks up its note and its two forgive flags, and where the
+    # forgiven days come out of working_days_counted / total_days_counted. Building the
+    # table without it left the snapshot's medians un-forgiven and its pause list unnamed,
+    # while the live dashboard (which does pass it) showed something different.
+    pause_notes = kd.load_pause_notes()
+    lead_df = kd.lead_time_table(projects, df_period, period_end=period["end"],
+                                 pause_notes=pause_notes)
     stats = kd.lead_time_summary(lead_df)
     cov = kd.lead_time_coverage(projects, lead_df, stats)
-    pause_notes = kd.load_pause_notes()
     effort = kd.lead_time_effort(lead_df)
     turn = ['<h2>Turnaround</h2>']
     turn.append(note(
@@ -557,15 +564,43 @@ def period_panels(pkey, period, df, raw_df, category_order, cat_colors, task_cat
     turn.append(fig(lambda d: kc.fig_lead_time_stages(
         lead_df, f"Project turnaround — {period['label']}", pause_notes=pause_notes,
         period_start=period["start"])))
+    def week_bits(w):
+        """Note + forgiveness for one week of a pause, as display fragments -- each week is
+        forgiven independently (see kd.gap_weeks), so a multi-week pause can read differently
+        week to week."""
+        bits = []
+        if w.get("note"):
+            bits.append(esc(w["note"]))
+        if w.get("forgiven_working") and w.get("forgiven_total"):
+            bits.append("forgiven (working + total)")
+        elif w.get("forgiven_working"):
+            bits.append("forgiven (working time)")
+        elif w.get("forgiven_total"):
+            bits.append("forgiven (total turnaround)")
+        return bits
+
     pause_lines = []
     for _, r in (lead_df.iterrows() if len(lead_df) else []):
         for g in (r.get("gaps") or []):
-            pause_note = pause_notes.get(r["Project tag"], {}).get(kd.pause_key(g), "")
-            pause_lines.append(
-                f"<li><strong>{esc(r['Project tag'])}</strong> — paused {g['weeks']} week"
-                f"{'' if g['weeks'] == 1 else 's'} ({g['start'].strftime('%d %b')} → "
-                f"{g['end'].strftime('%d %b %Y')})"
-                + (f": <em>{esc(pause_note)}</em>" if pause_note else "") + "</li>")
+            weeks_detail = g.get("weeks_detail") or [g]
+            header = (f"<strong>{esc(r['Project tag'])}</strong> — paused {g['weeks']} week"
+                      f"{'' if g['weeks'] == 1 else 's'} ({g['start'].strftime('%d %b')} → "
+                      f"{g['end'].strftime('%d %b %Y')})")
+            # Every week the same note/forgiveness (the common case, including every 1-week
+            # pause) reads as one line; a week that differs from the rest gets its own
+            # sub-list so the split is visible without listing every week separately by default.
+            signature = {(w.get("note", ""), w.get("forgiven_working"), w.get("forgiven_total"))
+                         for w in weeks_detail}
+            if len(signature) <= 1:
+                bits = week_bits(weeks_detail[0]) if weeks_detail else []
+                pause_lines.append(f"<li>{header}" + (f": <em>{'; '.join(bits)}</em>" if bits else "") + "</li>")
+            else:
+                sub_items = "".join(
+                    f"<li>Week of {w['start'].strftime('%d %b %Y')}"
+                    + (f": <em>{'; '.join(week_bits(w))}</em>" if week_bits(w) else "") + "</li>"
+                    for w in weeks_detail
+                )
+                pause_lines.append(f"<li>{header}<ul>{sub_items}</ul></li>")
     if pause_lines:
         turn.append('<h3>Pauses</h3><ul class="section-note">' + "".join(pause_lines) + "</ul>")
     out.append(panel("turnaround", "".join(turn), period=pkey))
@@ -616,10 +651,18 @@ def special_panel():
             due_html = f'<span class="due">{when}</span>' if when else ""
             task_items.append(f"<li>{indent}{mark} <span{cls}>"
                               f"{esc(t.get('text') or '(untitled task)')}</span>{due_html}</li>")
-        pred_html = (f'<div class="predicted">📅 Predicted completion: {pred.strftime("%d %b %Y")}</div>'
-                     if pred else "")
+        # A finished project shows what it finished *on* instead of a predicted completion:
+        # the prediction is about work still to come, and there isn't any.
+        if row.get("_finished"):
+            when = row.get("_completed")
+            pred_html = ('<div class="finished">✅ Finished'
+                         + (f' — {when.strftime("%d %b %Y")}' if when else "") + "</div>")
+        else:
+            pred_html = (f'<div class="predicted">📅 Predicted completion: {pred.strftime("%d %b %Y")}</div>'
+                         if pred else "")
         progress = f'<div class="meta">{done_n}/{len(tasks)} tasks done</div>' if tasks else ""
-        card = (f'<div class="card"><h4>{esc(name)}</h4>'
+        tick = "✅ " if row.get("_finished") else ""
+        card = (f'<div class="card"><h4>{tick}{esc(name)}</h4>'
                 f'<div class="meta">{esc(row.get("Goal"))}<br>{stars}</div>'
                 f"<ul>{desc_items}</ul>{pred_html}{progress}"
                 f'<ul class="tasks">{"".join(task_items)}</ul></div>')

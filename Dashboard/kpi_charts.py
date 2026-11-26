@@ -1011,12 +1011,25 @@ def goal_quadrant(development, impact):
 
 
 def fig_goals_at_a_glance(goals_df):
+    """Finished projects (a date in the ratings sheet's Completed column) keep their goal
+    color but wear a green ring and a white check inside the bubble, so "what's done" reads
+    at a glance without adding a second color scale on top of the goal one."""
+    finished = (goals_df["_finished"] if "_finished" in goals_df.columns
+                else pd.Series(False, index=goals_df.index))
+
+    def _finished_note(r):
+        if not r.get("_finished"):
+            return ""
+        when = r.get("_completed")
+        return f"<br><b>✓ Finished</b>" + (f" {when.strftime('%d %b %Y')}" if when else "")
+
     hover_text = goals_df.apply(
         lambda r: (
             f"<b>{r['Project']}</b><br>{r['Goal']}<br>"
             f"Development {r['Development']:.0f}★ · Impact {r['Impact']:.0f}★ · "
             f"Maintenance {r['Maintenance']:.0f}★ · Visibility {r['Visibility']:.0f}★<br>"
             f"<i>{goal_quadrant(r['Development'], r['Impact'])}</i>"
+            + _finished_note(r)
             + (f"<br><br>{_hover_description(r['Description'])}" if pd.notna(r.get("Description")) and r["Description"] else "")
             + (f"<br>{_hover_note('+', r['Advantages'], TL_GOOD)}" if pd.notna(r.get("Advantages")) and r["Advantages"] else "")
             + (f"<br>{_hover_note('-', r['Limitations'], TL_CRITICAL)}" if pd.notna(r.get("Limitations")) and r["Limitations"] else "")
@@ -1050,16 +1063,45 @@ def fig_goals_at_a_glance(goals_df):
                else dict(x0=axis_lo, x1=axis_hi, y0=GOAL_SPLIT, y1=GOAL_SPLIT)),
         )
 
+    max_visibility = goals_df["Visibility"].max()
     for group_label in goals_df["_group_label"].unique():
         sub = goals_df[goals_df["_group_label"] == group_label]
+        sub_finished = finished.loc[sub.index]
         fig.add_trace(go.Scatter(
             x=sub["_x"], y=sub["_y"], mode="markers+text",
             marker=dict(size=sub["Visibility"], sizemode="area",
-                        sizeref=2.0 * goals_df["Visibility"].max() / (55.0 ** 2), sizemin=8,
-                        color=sub["_group_color"].iloc[0], opacity=0.8, line=dict(color="white", width=1.5)),
+                        sizeref=2.0 * max_visibility / (55.0 ** 2), sizemin=8,
+                        color=sub["_group_color"].iloc[0], opacity=0.8,
+                        line=dict(color=[TL_GOOD if f else "white" for f in sub_finished],
+                                  width=[2.5 if f else 1.5 for f in sub_finished])),
             text=sub["Project"], textposition=sub["_textpos"], textfont=dict(size=9, color=INK),
             hovertext=hover_text.loc[sub.index], hoverinfo="text",
             customdata=[[p] for p in sub["Project"]], name=group_label,
+        ))
+
+    # The check rides in its own text trace on top of the bubbles (a marker can't carry a
+    # glyph), sized off each bubble's own diameter so it still fits a 1-star-visibility dot.
+    done = goals_df[finished]
+    if len(done):
+        # Plotly's own area sizing: with sizeref = 2*max/(55**2) a bubble's drawn diameter
+        # is 55*sqrt(v / (2*max)) px, floored at sizemin=8.
+        glyph_sizes = [
+            min(15.0, max(8.0, 0.62 * max(8.0, 55.0 * math.sqrt(v / (2.0 * max_visibility)))))
+            for v in done["Visibility"]
+        ]
+        fig.add_trace(go.Scatter(
+            x=done["_x"], y=done["_y"], mode="text", text=["✓"] * len(done),
+            textposition="middle center",
+            textfont=dict(size=glyph_sizes, color="white", family=FONT_FAMILY),
+            hovertext=hover_text.loc[done.index], hoverinfo="text",
+            customdata=[[p] for p in done["Project"]], showlegend=False,
+        ))
+        # Legend-only entry: an empty bubble wearing the same green ring, so the chart
+        # explains its own mark instead of needing a caption to.
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers", name="✓ Finished",
+            marker=dict(size=13, color="rgba(0,0,0,0)", line=dict(color=TL_GOOD, width=2.5)),
+            hoverinfo="skip",
         ))
     fig.update_xaxes(title_text="Development effort (stars)", range=[axis_lo, axis_hi], dtick=1,
                       showgrid=True, gridcolor=GRID)
@@ -1090,16 +1132,23 @@ def fig_lead_time_stages(lead_df, title="Project turnaround", pause_notes=None, 
     personal time log. With only a handful of projects a distribution would be meaningless,
     so this shows every project individually -- and it still reads at 20+ rows. Rows flagged
     as bad-date by lead_time_table are excluded (the caller reports them).
-    When the rows carry time-log `gaps` (see kd.lead_time_table), each pause is drawn as a
-    gray segment over the working bar, with its note from `pause_notes`
-    ({project: {gap-start ISO: {"note", "forgive_working", "forgive_total"}}}) in the
-    tooltip -- so a stopped-and-restarted project doesn't read as continuous work. A pause
-    ticked forgiven from either median is its own legend entry ("Paused (forgiven)") and
-    draws hatched -- but the same solid gray fill as a plain pause, not faded toward white
-    the way Internal mutes its (much more saturated) color, since lead_time_summary
-    excuses its days from whichever median(s) it was forgiven for the same way. The
-    hovertext names which one(s), since a pause can now be forgiven from Typical time to
-    deliver (effective working time), Typical total turnaround to user, both, or neither.
+    When the rows carry time-log `gaps` (see kd.lead_time_table), each pause is drawn week by
+    week over the working bar -- a 2+-week pause isn't one segment but one per week, each
+    with its own note and forgiveness, since kd.lead_time_table splits every gap that way
+    (gap_weeks) before looking up `pause_notes`
+    ({project: {week-start ISO: {"note", "forgive_working", "forgive_total"}}}). That's how a
+    stopped-and-restarted project doesn't read as continuous work, and how one week of a
+    multi-week pause can be forgiven while another isn't. Every week's tooltip always carries
+    two lines regardless of state: the reason (or "No reason given yet" when none was
+    entered) and the forgiveness status ("Not forgiven -- still counts in both medians", or
+    which median(s) it's excused from) -- so hovering never comes up blank just because a
+    pause hasn't been annotated or forgiven. A week ticked forgiven from either median is its
+    own legend entry ("Paused (forgiven)") and draws hatched -- but the same solid gray fill
+    as a plain pause, not faded toward white the way Internal mutes its (much more saturated)
+    color, since lead_time_summary excuses its days from whichever median(s) it was forgiven
+    for the same way. The hovertext names which one(s), since a week can now be forgiven from
+    Typical time to deliver (effective working time), Typical total turnaround to user, both,
+    or neither.
     The two *real* dates -- as opposed to the bar's formal ones -- draw as diamonds on the
     row: a solid black diamond at `real_start` (first week with logged hours: when work
     *really* began, before or after the tracker's Begining), and a hollow black diamond at
@@ -1243,44 +1292,83 @@ def fig_lead_time_stages(lead_df, title="Project turnaround", pause_notes=None, 
             ))
 
     if "gaps" in clean.columns:
-        # A pause ticked "forgive_working" and/or "forgive_total" (see kd.load_pause_notes)
-        # draws hatched, as its own legend entry -- but still the same solid gray fill as a
+        # Drawn week by week, not one segment per whole pause: kd.lead_time_table splits
+        # every gap into its individual weeks (gap_weeks) and looks up each week's own
+        # note/forgive_working/forgive_total, so a 2-week pause can have one week forgiven
+        # and the other not -- each draws its own hatched-or-solid segment and hovers with
+        # its own text. A forgiven week draws hatched -- but the same solid gray fill as a
         # plain pause, not faded toward white the way Internal/Inherited mute their (much
         # more saturated) colors: TL_BASELINE is already a pale, understated gray, so fading
         # it further the same way would read as "this bar vanished," not "this bar is
-        # excused." The hatch lines alone are the signal here. `forgiven`/`forgiven_working`/
-        # `forgiven_total` are already computed per-gap by kd.lead_time_table; the hover
-        # names which median(s) it's actually excused from, since the two can now differ.
-        gaps_by_state = {False: [], True: []}
+        # excused." The hatch lines alone are the signal here. Every tooltip always carries
+        # a reason line and a forgiveness line, even when neither applies, so hovering never
+        # comes up blank.
+        #
+        # One go.Bar trace PER WEEK, not one trace per forgiveness-state holding every week:
+        # a multi-week pause puts the same project on several rows of one trace, and
+        # Plotly's hover lookup -- keyed to the nearest point on a categorical axis -- only
+        # ever resolved to the first point at a repeated category, leaving every later week
+        # silently unhoverable no matter the barmode/hovermode. A trace can't collide with
+        # itself this way when it holds exactly one point, so each week gets its own trace;
+        # `legendgroup` plus `showlegend` on only the first keeps the legend down to the
+        # usual two entries ("Paused" / "Paused (forgiven)"), and clicking either still
+        # toggles every week in that group at once.
+        legend_shown = {False: False, True: False}
+        # ...and even then the pause bar still loses the *tooltip* to the working bar it sits
+        # on: Plotly scores a bar hover by how near the cursor is to that bar's END, so a
+        # week-wide pause only wins where its own end is nearer than the working bar's --
+        # which is why the reason only ever showed on whichever pause sat closest to the end
+        # of its project's bar, and never on the last one. `pause_hover` collects an
+        # invisible scatter point per day of every paused week; a scatter hover is scored by
+        # plain pixel distance to the point, so the week actually under the cursor always
+        # wins, anywhere across it. It carries the same text the bar does.
+        pause_hover = {"x": [], "y": [], "text": []}
         for _, r in clean.iterrows():
             for g in (r["gaps"] or []):
-                forgiven = bool(g.get("forgiven"))
-                fw, ft = bool(g.get("forgiven_working")), bool(g.get("forgiven_total"))
-                excused = (", ".join(filter(None, [
-                               "effective working time" if fw else "",
-                               "total turnaround to user" if ft else "",
-                           ])))
-                note = (pause_notes or {}).get(r["Project tag"], {}).get(
-                    g["start"].date().isoformat(), {}).get("note", "")
-                text = (f"<b>{r['Project tag']}</b>{desc_line(r.get('description'))}<br>"
-                        f"Paused {g['weeks']} week"
-                        f"{'' if g['weeks'] == 1 else 's'} — no hours logged<br>"
-                        f"{g['start'].strftime('%d %b %Y')} → {g['end'].strftime('%d %b %Y')}"
-                        + (f"<br><i>{note}</i>" if note else "")
-                        + (f"<br><i>Forgiven from: {excused}</i>" if forgiven else ""))
-                gaps_by_state[forgiven].append(
-                    (_wrap_label(r["Project tag"], 20), g["start"], g["weeks"] * 7 * ms, text))
+                weeks_detail = g.get("weeks_detail") or [g]
+                multi = len(weeks_detail) > 1
+                for i, w in enumerate(weeks_detail, start=1):
+                    forgiven = bool(w.get("forgiven"))
+                    fw, ft = bool(w.get("forgiven_working")), bool(w.get("forgiven_total"))
+                    excused = (", ".join(filter(None, [
+                                   "effective working time" if fw else "",
+                                   "total turnaround to user" if ft else "",
+                               ])))
+                    note = w.get("note") or (pause_notes or {}).get(r["Project tag"], {}).get(
+                        w["start"].date().isoformat(), {}).get("note", "")
+                    forgive_line = (f"Forgiven from: {excused}" if forgiven
+                                     else "Not forgiven — still counts in both medians")
+                    span_line = (f"Week {i} of {len(weeks_detail)} in a {g['weeks']}-week pause"
+                                 if multi else
+                                 f"Paused {g['weeks']} week{'' if g['weeks'] == 1 else 's'}")
+                    week_days = (w["end"] - w["start"]).days + 1
+                    text = (f"<b>{r['Project tag']}</b>{desc_line(r.get('description'))}<br>"
+                            f"{span_line} — no hours logged<br>"
+                            f"{w['start'].strftime('%d %b %Y')} → {w['end'].strftime('%d %b %Y')}<br>"
+                            f"<i>{note if note else 'No reason given yet'}</i><br>"
+                            f"<i>{forgive_line}</i>")
+                    name = "Paused (forgiven)" if forgiven else "Paused"
+                    fig.add_trace(go.Bar(
+                        y=[_wrap_label(r["Project tag"], 20)], base=[w["start"]],
+                        x=[week_days * ms], orientation="h", name=name, legendgroup=name,
+                        showlegend=not legend_shown[forgiven],
+                        marker=dict(color=TL_BASELINE, cornerradius=4,
+                                    line=dict(color=TL_SURFACE, width=2),
+                                    pattern=dict(shape="/" if forgiven else "", fgcolor=TL_INK_MUTED,
+                                                solidity=0.35, size=7)),
+                        hovertext=[text], hoverinfo="text",
+                    ))
+                    legend_shown[forgiven] = True
+                    for d in range(week_days):
+                        pause_hover["x"].append(w["start"] + pd.Timedelta(days=d, hours=12))
+                        pause_hover["y"].append(_wrap_label(r["Project tag"], 20))
+                        pause_hover["text"].append(text)
 
-        for forgiven, name, pattern_shape in ((False, "Paused", ""), (True, "Paused (forgiven)", "/")):
-            rows = gaps_by_state[forgiven]
-            if not rows:
-                continue
-            g_labels, g_bases, g_x, g_text = zip(*rows)
-            fig.add_trace(go.Bar(
-                y=list(g_labels), base=list(g_bases), x=list(g_x), orientation="h", name=name,
-                marker=dict(color=TL_BASELINE, cornerradius=4, line=dict(color=TL_SURFACE, width=2),
-                            pattern=dict(shape=pattern_shape, fgcolor=TL_INK_MUTED, solidity=0.35, size=7)),
-                hovertext=list(g_text), hoverinfo="text",
+        if pause_hover["x"]:
+            fig.add_trace(go.Scatter(
+                x=pause_hover["x"], y=pause_hover["y"], mode="markers", showlegend=False,
+                marker=dict(size=1, color="rgba(0,0,0,0)"),
+                hovertext=pause_hover["text"], hoverinfo="text",
             ))
 
     if "real_start" in clean.columns:
@@ -1357,8 +1445,18 @@ def fig_lead_time_stages(lead_df, title="Project turnaround", pause_notes=None, 
     fig.update_yaxes(showgrid=False, tickfont=dict(size=12, color=TL_INK_SECONDARY))
     fig.update_layout(
         **base_layout(title, width=950, height=max(260, 120 + 34 * len(clean))),
-        barmode="stack", bargap=0.35, margin=dict(l=10, r=30, t=80, b=40),
+        # "overlay", not "stack": every bar trace here sets its own explicit `base` (an
+        # absolute date), so nothing actually needs Plotly's stacking math -- these bars are
+        # positioned, not accumulated. "stack" matters because a multi-week pause puts
+        # several bars at the *same* y-category (the same project) within one trace (the
+        # "Paused"/"Paused (forgiven)" trace), and Plotly's stack bookkeeping is built around
+        # one value per category per trace: with a repeated category it only keeps the first
+        # occurrence hoverable, silently dropping the rest -- exactly why only the first week
+        # of a multi-week pause ever showed a tooltip. "overlay" has no such per-category
+        # bookkeeping, so every week's own segment stays independently hoverable.
+        barmode="overlay", bargap=0.35, margin=dict(l=10, r=30, t=80, b=40),
         legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1),
+        hovermode="closest",
     )
     return fig
 

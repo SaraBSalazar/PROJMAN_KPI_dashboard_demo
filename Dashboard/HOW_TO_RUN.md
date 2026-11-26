@@ -217,7 +217,7 @@ want (weekly, daily, ...). A few things worth knowing:
 | Special Projects → "All ratings" table                              | `Data/Special_Projects_Ratings.xlsx`                                                                                 |
 | Projects Review → "Non-quantifiable project outputs" table          | the period's`Data/KPI_*.xlsx`                                                                                   |
 | Add Data → new project / edit project / new meeting                 | the period's`Data/KPI_*.xlsx`                                                                                   |
-| Special Projects → "✏️ Edit this project" (incl. renaming)        | `Data/Special_Projects_Ratings.xlsx` (a rename also moves that project's task checklist, so its tasks follow it)     |
+| Special Projects → "✏️ Edit this project" (incl. renaming, ✅ finished)        | `Data/Special_Projects_Ratings.xlsx` (a rename also moves that project's task checklist, so its tasks follow it)     |
 | Special Projects → per-project task checklist (incl. planned dates) | `Data/special_project_tasks.json` (source of truth, mirrored to `Data/Special_Projects_Tasks.xlsx` on every edit)  |
 | Projects Review → "Beyond projects" cards                           | `Data/beyond_projects.json` (source of truth, mirrored to `Data/Beyond_Projects.xlsx` on every save)               |
 | Projects Review → "Publications" (under Beyond projects)             | `Data/publications.json` (source of truth, mirrored to `Data/Publications.xlsx` on every save)                     |

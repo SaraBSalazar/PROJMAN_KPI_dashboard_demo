@@ -377,27 +377,47 @@ def build_special_projects():
     cols = ["Goal", "Project", "Description", "Advantages", "Limitations", "Future gain",
             "Development", "Impact", "Maintenance", "Visibility"]
     df = pd.DataFrame(SPECIAL_PROJECTS, columns=cols)
-    path = DATA_DIR / "Special_Projects_Ratings.xlsx"
-    df.to_excel(path, sheet_name="Special Projects Ratings", index=False)
-    print(f"wrote {path} ({len(df)} goal/project rows)")
 
     # Anchored on the REAL current date, not the fake year above -- kpi_data.task_schedule
     # splits tasks into "coming up" / "behind" against whatever day the dashboard is
     # actually opened on. Dates fixed to the 2025 demo year would all read as overdue no
     # matter when someone runs this, which is exactly backwards from a healthy task list.
     today = date.today()
+
+    # Two projects are already delivered, so the demo shows the finished state: a date in
+    # "Completed" puts a green ring and a ✓ on the bubble and a finish date on the card.
+    # One big bubble and one of the smallest, since the ✓ is sized off the bubble's own
+    # diameter and both ends of that range are worth seeing.
+    finished_on = {
+        "Hands-on Workshop": today - timedelta(days=12),
+        "Snippet Library": today - timedelta(days=40),
+    }
+    df["Completed"] = [finished_on[p].isoformat() if p in finished_on else ""
+                       for p in df["Project"]]
+
+    path = DATA_DIR / "Special_Projects_Ratings.xlsx"
+    df.to_excel(path, sheet_name="Special Projects Ratings", index=False)
+    print(f"wrote {path} ({len(df)} goal/project rows, {len(finished_on)} finished)")
+
     tasks = {}
     for _, project, *_ in SPECIAL_PROJECTS:
         n_tasks = random.randint(3, 5)
         # start a little in the past, so the first milestone or two are already behind us,
         # then run on well past today -- most of what's left open should be upcoming, not
         # overdue.
-        cursor = today - timedelta(days=random.randint(20, 60))
+        # A finished project instead gets its whole checklist in the past, ticked and
+        # landing on its finish date: "delivered" with overdue tasks still open would read
+        # as a bug rather than as a demo.
+        end = finished_on.get(project)
+        cursor = (end - timedelta(days=25 * n_tasks) if end
+                  else today - timedelta(days=random.randint(20, 60)))
         task_list = []
         for i in range(n_tasks):
             start = cursor
-            due = start + timedelta(days=random.randint(20, 45))
-            if due < today - timedelta(days=7):
+            due = start + timedelta(days=random.randint(18, 24) if end else random.randint(20, 45))
+            if end:
+                done = True
+            elif due < today - timedelta(days=7):
                 done = random.random() < 0.9   # safely in the past -> almost certainly done
             elif due < today:
                 done = random.random() < 0.3   # just past -> a few genuinely overdue ones
@@ -514,7 +534,7 @@ TIMELOG_COLS = ["Entry", "Timesheet updated", "Category", "Hours (exact)", "Majo
                  "Hrs", "Min", "Month", "Month and year (chart)", "Notes", "Week",
                  "Weekly entry name (chart)", "Year", "Unnamed: 13"]
 GOALS_COLS = ["Goal", "Project", "Description", "Advantages", "Limitations", "Future gain",
-              "Development", "Impact", "Maintenance", "Visibility"]
+              "Development", "Impact", "Maintenance", "Visibility", "Completed"]
 TOOLS_COLS = ["Name", "Description", "Type of tool", "Built in", "Use", "Project Origin",
               "Limitations", "Future gain"]
 

@@ -1,7 +1,38 @@
 {
-  "LIP_003": {
-    "2025-09-01": {
-      "note": "waiting for user",
+  "IMG_015": {
+    "2025-03-31": {
+      "note": "waiting for the user to re-acquire samples",
+      "forgive_working": true,
+      "forgive_total": true
+    },
+    "2025-04-07": {
+      "note": "re-analysis queued behind another project",
+      "forgive_working": true,
+      "forgive_total": false
+    }
+  },
+  "PLNT_004": {
+    "2025-12-08": {
+      "note": "waiting for user data",
+      "forgive_working": true,
+      "forgive_total": true
+    },
+    "2025-12-15": {
+      "note": "waiting for user data",
+      "forgive_working": true,
+      "forgive_total": true
+    }
+  },
+  "CRC_030": {
+    "2025-03-24": {
+      "note": "waiting for user feedback on the draft report",
+      "forgive_working": true,
+      "forgive_total": false
+    }
+  },
+  "IMG_006": {
+    "2025-12-22": {
+      "note": "holiday break",
       "forgive_working": false,
       "forgive_total": false
     }

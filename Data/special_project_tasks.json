@@ -5,74 +5,74 @@
       "text": "Open Analysis Toolkit: milestone 1",
       "level": 0,
       "done": true,
-      "start": "2026-10-12",
-      "due": "2026-11-12"
+      "start": "2026-10-20",
+      "due": "2026-11-20"
     },
     {
       "id": "9105b357",
       "text": "Open Analysis Toolkit: milestone 2",
       "level": 0,
       "done": false,
-      "start": "2026-11-13",
-      "due": "2026-12-20"
+      "start": "2026-11-21",
+      "due": "2026-12-28"
     },
     {
       "id": "0b217573",
       "text": "Open Analysis Toolkit: milestone 3",
       "level": 0,
       "done": false,
-      "start": "2026-12-21",
-      "due": "2027-01-14"
+      "start": "2026-12-29",
+      "due": "2027-01-22"
     },
     {
       "id": "94480324",
       "text": "Open Analysis Toolkit: milestone 4",
       "level": 0,
       "done": false,
-      "start": "2027-01-15",
-      "due": "2027-02-19"
+      "start": "2027-01-23",
+      "due": "2027-02-27"
     }
   ],
   "Hands-on Workshop": [
     {
-      "id": "1bbd90c2",
+      "id": "a4972dbb",
       "text": "Hands-on Workshop: milestone 1",
       "level": 0,
-      "done": false,
-      "start": "2026-09-23",
-      "due": "2026-11-02"
+      "done": true,
+      "start": "2026-07-11",
+      "due": "2026-08-02"
+    },
+    {
+      "id": "1bbd90c2",
+      "text": "Hands-on Workshop: milestone 2",
+      "level": 0,
+      "done": true,
+      "start": "2026-08-03",
+      "due": "2026-08-23"
     },
     {
       "id": "532bede7",
-      "text": "Hands-on Workshop: milestone 2",
+      "text": "Hands-on Workshop: milestone 3",
       "level": 0,
-      "done": false,
-      "start": "2026-11-03",
-      "due": "2026-11-25"
+      "done": true,
+      "start": "2026-08-24",
+      "due": "2026-09-11"
     },
     {
       "id": "ccd2318c",
-      "text": "Hands-on Workshop: milestone 3",
+      "text": "Hands-on Workshop: milestone 4",
       "level": 0,
-      "done": false,
-      "start": "2026-11-26",
-      "due": "2027-01-05"
+      "done": true,
+      "start": "2026-09-12",
+      "due": "2026-10-05"
     },
     {
       "id": "15c3e41d",
-      "text": "Hands-on Workshop: milestone 4",
-      "level": 0,
-      "done": false,
-      "start": "2027-01-06",
-      "due": "2027-01-28"
-    },
-    {
-      "id": "cc04686c",
       "text": "Hands-on Workshop: milestone 5",
       "level": 0,
-      "done": false,
-      "start": "2027-01-29",
-      "due": "2027-03-13"
+      "done": true,
+      "start": "2026-10-06",
+      "due": "2026-10-24"
     }
   ],
   "Request Triage Tool": [
@@ -81,40 +81,40 @@
       "text": "Request Triage Tool: milestone 1",
       "level": 0,
       "done": false,
-      "start": "2026-10-14",
-      "due": "2026-11-28"
+      "start": "2026-10-22",
+      "due": "2026-12-06"
     },
     {
       "id": "95ac88dd",
       "text": "Request Triage Tool: milestone 2",
       "level": 0,
       "done": false,
-      "start": "2026-11-29",
-      "due": "2027-01-07"
+      "start": "2026-12-07",
+      "due": "2027-01-15"
     },
     {
       "id": "6c09447d",
       "text": "Request Triage Tool: milestone 3",
       "level": 0,
       "done": false,
-      "start": "2027-01-08",
-      "due": "2027-02-12"
+      "start": "2027-01-16",
+      "due": "2027-02-20"
     },
     {
       "id": "628a27e3",
       "text": "Request Triage Tool: milestone 4",
       "level": 0,
       "done": false,
-      "start": "2027-02-13",
-      "due": "2027-03-15"
+      "start": "2027-02-21",
+      "due": "2027-03-23"
     },
     {
       "id": "ebae0624",
       "text": "Request Triage Tool: milestone 5",
       "level": 0,
       "done": false,
-      "start": "2027-03-16",
-      "due": "2027-04-10"
+      "start": "2027-03-24",
+      "due": "2027-04-18"
     }
   ],
   "Template Library": [
@@ -123,32 +123,32 @@
       "text": "Template Library: milestone 1",
       "level": 0,
       "done": false,
-      "start": "2026-10-18",
-      "due": "2026-11-25"
+      "start": "2026-10-26",
+      "due": "2026-12-03"
     },
     {
       "id": "e56308e8",
       "text": "Template Library: milestone 2",
       "level": 0,
       "done": false,
-      "start": "2026-11-26",
-      "due": "2026-12-29"
+      "start": "2026-12-04",
+      "due": "2027-01-06"
     },
     {
       "id": "b3eed98a",
       "text": "Template Library: milestone 3",
       "level": 0,
       "done": false,
-      "start": "2026-12-30",
-      "due": "2027-01-24"
+      "start": "2027-01-07",
+      "due": "2027-02-01"
     },
     {
       "id": "9e70668c",
       "text": "Template Library: milestone 4",
       "level": 0,
       "done": false,
-      "start": "2027-01-25",
-      "due": "2027-02-16"
+      "start": "2027-02-02",
+      "due": "2027-02-24"
     }
   ],
   "Dataset Browser": [
@@ -157,50 +157,50 @@
       "text": "Dataset Browser: milestone 1",
       "level": 0,
       "done": true,
-      "start": "2026-10-02",
-      "due": "2026-11-06"
+      "start": "2026-10-10",
+      "due": "2026-11-14"
     },
     {
       "id": "59d0d11a",
       "text": "Dataset Browser: milestone 2",
       "level": 0,
       "done": false,
-      "start": "2026-11-07",
-      "due": "2026-12-04"
+      "start": "2026-11-15",
+      "due": "2026-12-12"
     },
     {
       "id": "52a010bb",
       "text": "Dataset Browser: milestone 3",
       "level": 0,
       "done": false,
-      "start": "2026-12-05",
-      "due": "2027-01-05"
+      "start": "2026-12-13",
+      "due": "2027-01-13"
     }
   ],
   "Snippet Library": [
     {
-      "id": "4cf49144",
+      "id": "b01db4d2",
       "text": "Snippet Library: milestone 1",
       "level": 0,
-      "done": false,
-      "start": "2026-10-05",
-      "due": "2026-11-17"
+      "done": true,
+      "start": "2026-08-02",
+      "due": "2026-08-26"
     },
     {
-      "id": "9203787e",
+      "id": "b93e93a1",
       "text": "Snippet Library: milestone 2",
       "level": 0,
-      "done": false,
-      "start": "2026-11-18",
-      "due": "2026-12-11"
+      "done": true,
+      "start": "2026-08-27",
+      "due": "2026-09-16"
     },
     {
-      "id": "877f70f9",
+      "id": "d85d6948",
       "text": "Snippet Library: milestone 3",
       "level": 0,
-      "done": false,
-      "start": "2026-12-12",
-      "due": "2027-01-03"
+      "done": true,
+      "start": "2026-09-17",
+      "due": "2026-10-07"
     }
   ]
 }

@@ -137,12 +137,14 @@ with st.expander("ℹ️ How these numbers are calculated"):
   out of all four tiles: there's no external user waiting, so their days aren't service
   turnaround. They also have no report to send, so the **Closing Day** ends their working
   stage (and is what shows under *Report sent* in the table below).
-- **Forgiven pauses** — each pause (below) carries two separate forgive checkboxes, one for
-  *effective working time*, one for *total turnaround to user*: tick either (or both) to
-  draw that pause **faded and hatched in gray** and subtract its days from just that
-  figure, without excusing the rest of the project the way Internal does. They're
-  independent on purpose — a pause that shouldn't count as real work might still be time
-  the user genuinely spent waiting (forgive working time only), or the reverse.
+- **Forgiven pauses** — each pause (below) is forgiven **week by week**, not as a single
+  block: a pause spanning several weeks can have one week forgiven and another not. Every
+  week carries two separate forgive checkboxes, one for *effective working time*, one for
+  *total turnaround to user*: tick either (or both) to draw that week **faded and hatched
+  in gray** and subtract its days from just that figure, without excusing the rest of the
+  project the way Internal does. They're independent on purpose — a week that shouldn't
+  count as real work might still be time the user genuinely spent waiting (forgive working
+  time only), or the reverse.
 - **Consulting blocks** don't appear here at all — a standing advisory thread has no start
   and no report to deliver, so there's no turnaround to measure. They're still counted in
   the project total above, and have their own section further down.
@@ -280,8 +282,10 @@ if paused_rows:
             "excuses it from Typical time to deliver (effective working time), *total* "
             "excuses it from Typical total turnaround to user. They're independent: tick "
             "one, both, or neither, without excusing the rest of the project the way "
-            "Internal does. Kept in project_pause_notes.json; both show in the chart's "
-            "tooltip, and a pause forgiven from either draws faded and hatched."
+            "Internal does. A pause spanning more than one week is forgiven **week by "
+            "week** — tick a box for one week of a two-week pause without ticking it for "
+            "the other. Kept in project_pause_notes.json; both show in the chart's "
+            "tooltip, and a forgiven week draws faded and hatched."
             if not READONLY else pause_def
         )
         default_entry = {"note": "", "forgive_working": False, "forgive_total": False}
@@ -289,37 +293,44 @@ if paused_rows:
         for r in paused_rows:
             tag = r["Project tag"]
             for g in r["gaps"]:
-                key = kd.pause_key(g)
-                existing = pause_notes.get(tag, {}).get(key, default_entry)
+                weeks_detail = g.get("weeks_detail") or [g]
+                multi = len(weeks_detail) > 1
                 span = f"{g['start'].strftime('%d %b %Y')} → {g['end'].strftime('%d %b %Y')}"
-                label = f"**{tag}** — paused {g['weeks']} week{'s' if g['weeks'] != 1 else ''} ({span})"
-                if READONLY:
-                    bits = []
-                    if existing["note"]:
-                        bits.append(f"*{existing['note']}*")
-                    if existing["forgive_working"] and existing["forgive_total"]:
-                        bits.append("forgiven (working + total)")
-                    elif existing["forgive_working"]:
-                        bits.append("forgiven (working time)")
-                    elif existing["forgive_total"]:
-                        bits.append("forgiven (total turnaround)")
-                    st.markdown(label + (f" — {', '.join(bits)}" if bits else ""))
-                    continue
-                c1, c2, c3, c4 = st.columns([1.3, 1.8, 0.65, 0.65])
-                c1.markdown(label)
-                note = c2.text_input("Why did it stop?", value=existing["note"],
-                                     key=f"pause_{tag}_{key}", placeholder="e.g. waiting for user",
-                                     label_visibility="collapsed")
-                forgive_working = c3.checkbox("Forgive (working)", value=existing["forgive_working"],
-                                              key=f"forgive_working_{tag}_{key}")
-                forgive_total = c4.checkbox("Forgive (total)", value=existing["forgive_total"],
-                                            key=f"forgive_total_{tag}_{key}")
-                if (note != existing["note"] or forgive_working != existing["forgive_working"]
-                        or forgive_total != existing["forgive_total"]):
-                    pause_notes.setdefault(tag, {})[key] = {
-                        "note": note, "forgive_working": forgive_working, "forgive_total": forgive_total,
-                    }
-                    changed = True
+                header = f"**{tag}** — paused {g['weeks']} week{'s' if g['weeks'] != 1 else ''} ({span})"
+                if multi:
+                    st.markdown(header)
+                for i, w in enumerate(weeks_detail, start=1):
+                    key = kd.pause_key(w)
+                    existing = pause_notes.get(tag, {}).get(key, default_entry)
+                    week_span = f"{w['start'].strftime('%d %b %Y')} → {w['end'].strftime('%d %b %Y')}"
+                    label = f"— week {i} of {g['weeks']} ({week_span})" if multi else header
+                    if READONLY:
+                        bits = []
+                        if existing["note"]:
+                            bits.append(f"*{existing['note']}*")
+                        if existing["forgive_working"] and existing["forgive_total"]:
+                            bits.append("forgiven (working + total)")
+                        elif existing["forgive_working"]:
+                            bits.append("forgiven (working time)")
+                        elif existing["forgive_total"]:
+                            bits.append("forgiven (total turnaround)")
+                        st.markdown(label + (f" — {', '.join(bits)}" if bits else ""))
+                        continue
+                    c1, c2, c3, c4 = st.columns([1.3, 1.8, 0.65, 0.65])
+                    c1.markdown(label)
+                    note = c2.text_input("Why did it stop?", value=existing["note"],
+                                         key=f"pause_{tag}_{key}", placeholder="e.g. waiting for user",
+                                         label_visibility="collapsed")
+                    forgive_working = c3.checkbox("Forgive (working)", value=existing["forgive_working"],
+                                                  key=f"forgive_working_{tag}_{key}")
+                    forgive_total = c4.checkbox("Forgive (total)", value=existing["forgive_total"],
+                                                key=f"forgive_total_{tag}_{key}")
+                    if (note != existing["note"] or forgive_working != existing["forgive_working"]
+                            or forgive_total != existing["forgive_total"]):
+                        pause_notes.setdefault(tag, {})[key] = {
+                            "note": note, "forgive_working": forgive_working, "forgive_total": forgive_total,
+                        }
+                        changed = True
         if not READONLY and changed:
             try:
                 kd.save_pause_notes(pause_notes)

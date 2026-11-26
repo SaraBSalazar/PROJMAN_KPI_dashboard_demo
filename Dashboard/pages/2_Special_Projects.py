@@ -27,8 +27,14 @@ MAX_TASK_LEVEL = 2  # top level + 2 nested levels
 
 
 def render_card(row):
-    st.markdown(f"### {row['Project']}")
+    st.markdown(f"### {'✅ ' if row.get('_finished') else ''}{row['Project']}")
     st.caption(row["Goal"])
+
+    if row.get("_finished"):
+        when = row.get("_completed")
+        st.success(
+            "**Finished**" + (f" — {when.strftime('%d %b %Y')}" if when else ""), icon="✅",
+        )
 
     stars = " · ".join(
         f"**{label}** {'★' * int(row[label])}"
@@ -287,6 +293,18 @@ def render_goal_editor(goals_df, row, project_names):
             limitations = _text("Limitations", "Limitations")
             future_gain = _text("Future gain", "Future gain")
 
+            st.caption("Mark the project finished once it is delivered — its bubble then wears "
+                       "a green ring and a ✓ on the goals chart.")
+            fin_col, when_col = st.columns([1, 1])
+            finished = fin_col.checkbox(
+                "✅ Project finished", value=bool(row.get("_finished")), key=f"gfin_{old_name}",
+            )
+            completed_on = when_col.date_input(
+                "Finished on", value=row.get("_completed") or dt.date.today(),
+                key=f"gfindate_{old_name}", format="DD/MM/YYYY",
+                help="Only used when the box on the left is ticked.",
+            )
+
             st.caption("Star ratings — Development and Impact place the bubble, Visibility sizes it.")
             s1, s2, s3, s4 = st.columns(4)
             stars = {}
@@ -312,6 +330,9 @@ def render_goal_editor(goals_df, row, project_names):
                     edited.loc[mask, "Advantages"] = advantages
                     edited.loc[mask, "Limitations"] = limitations
                     edited.loc[mask, "Future gain"] = future_gain
+                    edited.loc[mask, "Completed"] = (
+                        completed_on.isoformat() if (finished and completed_on) else ""
+                    )
                     for col, value in stars.items():
                         edited.loc[mask, col] = value
                     try:

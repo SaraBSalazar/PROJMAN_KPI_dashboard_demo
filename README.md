@@ -126,7 +126,8 @@ generate_demo_data.py   writes every file under Data/ from invented placeholders
   outputs, and "beyond projects" cards. Driven purely by the project tracker, so it works
   for a period that predates the time log.
 - **Special Projects** — goal-rating bubble chart, per-project cards, task checklists with
-  planned dates, and predicted timelines.
+  planned dates, and predicted timelines. A delivered project can be marked finished, which
+  gives its bubble a green ring and a ✓ and puts a finish date on its card.
 - **Add Data** — quick-add and edit forms for projects and consultation meetings.
 - **Tools & AI Skills** — inventory of tools and automations built, with a breakdown by
   type, use, and project origin.

@@ -834,6 +834,18 @@ def load_goals():
         goals_df[col] = pd.to_numeric(goals_df[col], errors="coerce").fillna(1).clip(lower=1)
     goals_df = goals_df.reset_index(drop=True)
 
+    # Completion stamp: a project counts as finished once "Completed" holds a date. The
+    # column was added later than the sheet, so a file saved before it existed (or a row
+    # left blank) simply reads as not finished.
+    if "Completed" not in goals_df.columns:
+        goals_df["Completed"] = pd.NaT
+    completed = pd.to_datetime(goals_df["Completed"], errors="coerce")
+    goals_df["_completed"] = [d.date() if pd.notna(d) else None for d in completed]
+    goals_df["_finished"] = [d is not None for d in goals_df["_completed"]]
+    # Keep the source column as plain text, so an editor writing "" back into it (to unmark
+    # a project) isn't fighting a datetime64 column.
+    goals_df["Completed"] = [d.isoformat() if d else "" for d in goals_df["_completed"]]
+
     goal_group_colors = {
         "01": ("01 - Reach more research groups", "#2C6E7F"),
         "03": ("03 - Development", "#2A9D8F"),
@@ -873,7 +885,7 @@ def load_goals():
 
 GOALS_EDIT_COLS = [
     "Goal", "Project", "Description", "Advantages", "Limitations", "Future gain",
-    "Development", "Impact", "Maintenance", "Visibility",
+    "Development", "Impact", "Maintenance", "Visibility", "Completed",
 ]
 
 
@@ -893,6 +905,13 @@ def save_goals(edited_df):
     for col in GOALS_RATING_COLS:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(1).clip(lower=1).astype(int)
+    if "Completed" in out.columns:
+        # Always written back as a plain ISO date (or blank), whatever the caller passed --
+        # a Timestamp, a date, a typed-in string in the ratings grid.
+        out["Completed"] = [
+            d.date().isoformat() if pd.notna(d) else ""
+            for d in pd.to_datetime(out["Completed"], errors="coerce")
+        ]
     out.to_excel(GOALS_PATH, sheet_name="Special Projects Ratings", index=False)
 
 
@@ -1465,13 +1484,16 @@ def lead_time_table(projects, df_period=None, period_end=None, pause_notes=None)
                      stop-and-RESTART; a project touched once and never again needs this to
                      show up as paused at all.
 
-    `pause_notes` (from load_pause_notes: {project: {gap-key: {"note", "forgive_working",
+    `pause_notes` (from load_pause_notes: {project: {week-key: {"note", "forgive_working",
     "forgive_total"}}}) lets any individual pause be excused from either median
     independently, without excusing the whole project: "forgive_working" subtracts its days
     from `working_days_counted` alone (Typical time to deliver / effective working time),
     "forgive_total" subtracts them from the working-portion of `total_days_counted` alone
     (Typical total turnaround to user) -- a pause can be forgiven from one, the other,
-    both, or neither. `working_days_counted` and `total_days_counted` are what
+    both, or neither. Each gap is split week by week (see gap_weeks) before this lookup, so
+    a multi-week pause can have one week forgiven and the next not: every week carries its
+    own note and its own two forgive flags, under its own `pause_key`.
+    `working_days_counted` and `total_days_counted` are what
     lead_time_summary and turnaround_by_size use instead of
     the raw `working_days` / `total_days` (kept as-is for the chart and the per-project
     table, since the time off still really happened).
@@ -1555,14 +1577,32 @@ def lead_time_table(projects, df_period=None, period_end=None, pause_notes=None)
                 gaps.append({"start": act["last_end"] + pd.Timedelta(days=1),
                              "end": work_end, "weeks": trailing_weeks})
 
+        # A multi-week pause is forgiven week by week, not as a single all-or-nothing block
+        # (see gap_weeks): each week gets its own note/forgive_working/forgive_total looked
+        # up under its own pause_key, so one week of a two-week pause can be forgiven while
+        # the other isn't. A 1-week gap's single week is identical to the gap itself, so the
+        # common case (PAUSE_MIN_WEEKS == 1) is unaffected.
         tag_notes = pause_notes.get(tag, {})
+        forgiven_days_working = forgiven_days_total = 0
         for g in gaps:
-            note = tag_notes.get(pause_key(g), {})
-            g["forgiven_working"] = bool(note.get("forgive_working"))
-            g["forgiven_total"] = bool(note.get("forgive_total"))
-            g["forgiven"] = g["forgiven_working"] or g["forgiven_total"]  # any forgiveness, for the chart
-        forgiven_days_working = sum(g["weeks"] * 7 for g in gaps if g["forgiven_working"])
-        forgiven_days_total = sum(g["weeks"] * 7 for g in gaps if g["forgiven_total"])
+            weeks_detail = gap_weeks(g)
+            for w in weeks_detail:
+                note = tag_notes.get(pause_key(w), {})
+                w["note"] = note.get("note", "")
+                w["forgiven_working"] = bool(note.get("forgive_working"))
+                w["forgiven_total"] = bool(note.get("forgive_total"))
+                w["forgiven"] = w["forgiven_working"] or w["forgiven_total"]
+                week_days = (w["end"] - w["start"]).days + 1
+                if w["forgiven_working"]:
+                    forgiven_days_working += week_days
+                if w["forgiven_total"]:
+                    forgiven_days_total += week_days
+            g["weeks_detail"] = weeks_detail
+            # Gap-level flags for anything that still wants the whole pause at once: "fully
+            # forgiven" only when every week in it is, "any forgiven" when at least one is.
+            g["forgiven_working"] = all(w["forgiven_working"] for w in weeks_detail)
+            g["forgiven_total"] = all(w["forgiven_total"] for w in weeks_detail)
+            g["forgiven"] = any(w["forgiven"] for w in weeks_detail)
         working_counted = max(0, working - forgiven_days_working)
         working_counted_for_total = max(0, working - forgiven_days_total)
 
@@ -1592,7 +1632,8 @@ def lead_time_table(projects, df_period=None, period_end=None, pause_notes=None)
             "inherited": trigger == "Inherited Project",
             "internal": trigger == "Internal",
             "weeks_active": act["n_active"] if act else None,
-            "weeks_paused": sum(g["weeks"] for g in gaps if not g["forgiven"]), "gaps": gaps,
+            "weeks_paused": sum(1 for g in gaps for w in g["weeks_detail"] if not w["forgiven"]),
+            "gaps": gaps,
         })
     return pd.DataFrame(rows)
 
@@ -1609,15 +1650,31 @@ def lead_time_table(projects, df_period=None, period_end=None, pause_notes=None)
 PAUSE_NOTES_PATH = DATA_DIR / "project_pause_notes.json"
 
 
-def pause_key(gap):
-    """Stable id for one detected pause: the ISO date of its first empty week. The same gap
-    keeps the same key across reruns as long as the surrounding logged weeks don't change."""
-    return gap["start"].date().isoformat()
+def pause_key(week):
+    """Stable id for one empty week -- of a single-week pause, or of one week inside a
+    multi-week one (see gap_weeks). The same week keeps the same key across reruns as long
+    as the surrounding logged weeks don't change."""
+    return week["start"].date().isoformat()
+
+
+def gap_weeks(gap):
+    """Split a detected pause into its individual 7-day weeks, each independently forgivable
+    -- so a 2-week pause can have its first week forgiven and the second not, rather than
+    being an all-or-nothing block. A 1-week gap (the common case, since PAUSE_MIN_WEEKS == 1)
+    returns a single week identical to the gap itself, so nothing changes for it."""
+    weeks = []
+    for i in range(gap["weeks"]):
+        week_start = gap["start"] + pd.Timedelta(days=7 * i)
+        week_end = min(week_start + pd.Timedelta(days=6), gap["end"])
+        weeks.append({"start": week_start, "end": week_end})
+    return weeks
 
 
 def load_pause_notes():
-    """{project: {gap-start ISO date: {"note": str, "forgive_working": bool,
-    "forgive_total": bool}}}. Also reads the two older formats so nothing written under
+    """{project: {week-start ISO date: {"note": str, "forgive_working": bool,
+    "forgive_total": bool}}} -- one entry per individual empty week (see gap_weeks), not per
+    whole pause, so a multi-week pause can have some weeks forgiven and others not. Also
+    reads the two older formats so nothing written under
     them is lost: the plain-string format from before "forgive" existed (note only), and
     the single-"forgive" format from before it split in two (that one value, applied to
     both -- the combination that reproduced the old behavior exactly)."""
@@ -1684,7 +1741,9 @@ def lead_time_summary(lead_df):
     # on the chart, `n_clean` only the ones the medians are computed from.
     shown = lead_df[lead_df["flag"] == ""] if len(lead_df) else lead_df
     shown_delivered = shown[shown["done"]] if len(shown) else shown
-    forgiven_days = (int(sum(g["weeks"] * 7 for gaps in lead_df["gaps"] for g in (gaps or []) if g.get("forgiven")))
+    forgiven_days = (int(sum((w["end"] - w["start"]).days + 1
+                              for gaps in lead_df["gaps"] for g in (gaps or [])
+                              for w in g.get("weeks_detail", []) if w.get("forgiven")))
                       if len(lead_df) and "gaps" in lead_df.columns else 0)
     return {
         "median_waiting": med(clean["waiting_days"]) if len(clean) else None,
