@@ -76,6 +76,31 @@ h2, h3 {{ font-weight: 650 !important; letter-spacing: -0.01em; }}
 
 /* Page header block */
 .kpi-sub {{ color: {t['ink2']}; font-size: 0.95rem; margin: -0.35rem 0 0.9rem; }}
+
+/* Lineage cards (Gains & Outputs, Part B) -- one relationship per row, ids/names as chips */
+.rel-row {{ margin: 0.3rem 0; font-size: 0.88rem; line-height: 1.6; }}
+.rel-label {{
+  font-weight: 600;
+  color: {t['ink2']};
+  margin-right: 0.4rem;
+}}
+.rel-none {{ color: {t['ink3']}; font-style: italic; }}
+.rel-chip {{
+  display: inline-block;
+  background: {t['accent_soft']};
+  color: {t['ink2']};
+  border: 1px solid {t['line']};
+  border-radius: 999px;
+  padding: 0.08rem 0.65rem;
+  margin: 0.08rem 0.25rem 0.08rem 0;
+  font-size: 0.82rem;
+}}
+/* An id with no match in the project tracker -- same information, visibly less confident */
+.rel-chip.rel-chip-muted {{
+  background: transparent;
+  color: {t['ink3']};
+  border-style: dashed;
+}}
 </style>""",
         unsafe_allow_html=True,
     )

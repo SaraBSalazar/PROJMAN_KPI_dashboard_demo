@@ -16,13 +16,19 @@ after any change to kpi_data.py, kpi_charts.py, or a page, as a fast first check
 
 import sys
 
+# KPI_Report.py is now a thin st.navigation router rather than a content page itself --
+# AppTest.from_file("KPI_Report.py") runs it and lands on its default page (Overview), so it
+# still exercises both the router and that page in one go. The actual Overview content also
+# gets its own entry below so it's checked loading directly too, same as every other page.
 MAIN_PAGE = "KPI_Report.py"
 PAGES = [
     MAIN_PAGE,
+    "pages/0_Overview.py",
     "pages/1_Projects_Review.py",
     "pages/2_Special_Projects.py",
     "pages/3_Tools.py",
     "pages/4_Add_Data.py",
+    "pages/5_Gains.py",
 ]
 
 

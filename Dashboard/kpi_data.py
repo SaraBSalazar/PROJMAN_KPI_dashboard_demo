@@ -54,6 +54,80 @@ TL_CRITICAL = "#d03b3b"  # status: decrease
 TL_PALETTE = ["#1f5c99", "#c1622e", "#1a8f6b", "#b8860b", "#b5577a", "#3a7d2c", "#5c4a8f", "#b23a3a"]
 TL_PALETTE_DARK = ["#4a84c9", "#c76a35", "#29ab82", "#a87910", "#b2567d", "#5c9c4a", "#7a68b3", "#c75555"]
 
+# Gains & Outputs page: a named maturity/status palette for the 3 ordered states (Potential ->
+# In use -> Delivered) -- Delivered green, In use blue, Potential a muted neutral grey, per
+# Sara's explicit choice (she first asked for yellow on Potential, then corrected to grey).
+# Deliberately NOT TL_GOOD/TL_CRITICAL-style saturated traffic-light hues (TL_GOOD "#0ca30c"
+# was rejected as unprofessional) -- these are the same muted, desaturated family as TL_PALETTE
+# (OKLCH L/C checked against it) and TL_BASELINE (Potential's grey is a slightly darker step of
+# that same neutral so it still clears 3:1 contrast as a bar fill, not just a gridline). The "/"
+# hatch on Potential (see _POTENTIAL_HATCH in kpi_charts.py) stays -- with 3 distinct hues now
+# instead of one ramp's light/dark steps, the hatch is what keeps Potential readable to a viewer
+# who can't use hue at all, same as before. Both triples re-validated with the dataviz skill's
+# validate_palette.js (OKLab CVD + normal-vision + contrast checks) against each other and
+# against ADA_PERSONAL_COLOR/_DARK below; the dark triple's own L/C were picked independently
+# of the light triple's (not just "the same hue, lighter") specifically so Delivered's green
+# stays the most prominent against a dark surface.
+GAIN_STATE_COLORS = {"Delivered": "#1a8f6b", "In use": "#1f5c99", "Potential": "#8c8a7a"}
+GAIN_STATE_COLORS_DARK = {"Delivered": "#29ab82", "In use": "#4a84c9", "Potential": "#726e66"}
+
+# Gains & Outputs page: one hue per GAIN_GROUPS theme, used ONLY to colour group labels/bands
+# (the axis band, bracket and header strip that say "these rows/columns belong together") --
+# never the data marks themselves, which must keep reading Delivered/In use/Potential via
+# GAIN_STATE_COLORS[_DARK] above. Re-picked from scratch (all 4, not just Efficiency) when the
+# state palette moved to green/blue/grey above: the old Efficiency "#1a8f6b" was the exact same
+# hex as the new Delivered green, and the old Capability/Innovation/Reach hues (gold/purple/
+# pink) turned out -- per validate_palette.js, not by eye -- to sit too close to the new
+# Delivered/In use for CVD and even normal vision to tell apart.
+#
+# Checked ONLY against GAIN_STATE_COLORS[_DARK] (Delivered/In use/Potential) -- NOT against
+# ADA_PERSONAL_COLOR[_DARK): ADA/Personal's orange only ever appears in fig_audience_outputs,
+# group colours only ever appear in fig_gains_active_potential/fig_gains_matrix, and those are
+# three different figures -- no render ever puts the two palettes in the same picture, so
+# constraining against ADA's orange too was over-constraining the search for no real payoff
+# (an earlier pass did include it and it meaningfully shrank the usable hue space, forcing two
+# groups into neighbouring violet/magenta shades that were too close to each other).
+#
+# All 4 are from clearly different families (sienna/burnt-red, violet, gold, rose/magenta),
+# every pairwise combination clears validate_palette.js's normal-vision floor (>=15, several
+# with 20-30+ to spare) in BOTH themes, and the group->colour assignment itself was chosen so
+# the groups that actually sit NEXT TO each other on screen (GAIN_GROUP_ORDER's adjacent pairs:
+# Efficiency-Capability, Capability-Innovation, Innovation-Reach) get the MOST distinct pairing
+# available, while the single weakest pair in each theme's palette (still >=15, just the
+# relative minimum) lands on a NON-adjacent pair instead -- Efficiency sienna sits next to
+# Capability violet (light ΔE 22.9 / dark ΔE 25.4), not next to whichever colour happens to be
+# its closest match that theme.
+GAIN_GROUP_COLORS = {
+    "Efficiency": "#e45268",
+    "Capability": "#986feb",
+    "Innovation & visibility": "#bb8a00",
+    "Reach & relationships": "#982480",
+}
+GAIN_GROUP_COLORS_DARK = {
+    "Efficiency": "#c73e1a",
+    "Capability": "#6f44bc",
+    "Innovation & visibility": "#b08700",
+    "Reach & relationships": "#c44a9e",
+}
+
+# Gains & Outputs page: label shown to the user for the "In use" state -- the internal value
+# (GAIN_STATE_COLORS keys, STATE_ORDER, developments["state"]/gain_summary comparisons) stays
+# the plain "In use" string everywhere in the data/logic layer; only the RENDERED text changes,
+# so nothing has to migrate and nothing is left half-comparing against an old string. "In use"
+# alone reads as "finished and running," which hides exactly what Sara asked to make explicit:
+# this state also covers something still being actively built/iterated on (her own example was
+# Pipeline). Kept short on purpose -- it still has to fit a legend entry and an axis tick label
+# without wrapping or overflowing (checked by rendering, not just by eye).
+GAIN_STATE_LABELS = {"Delivered": "Delivered", "In use": "In use & developing", "Potential": "Potential"}
+
+# Gains & Outputs page: the "ADA / Personal" audience row (fig_audience_outputs) -- the
+# inward-facing counterpart to Internal/External users, built from Output level rather than a
+# boolean flag. TL_PALETTE[1]/_DARK[1], named rather than inlined so the one spot that needs an
+# "audience" hue distinct from both the state ramp and the group colors above has a single
+# source of truth.
+ADA_PERSONAL_COLOR = TL_PALETTE[1]
+ADA_PERSONAL_COLOR_DARK = TL_PALETTE_DARK[1]
+
 RAW_COLUMNS = [
     "Entry", "Timesheet updated", "Category", "Hours (exact)", "Major task name (chart)",
     "Hrs", "Min", "", "Month", "Month and year (chart)", "Notes", "Week",
@@ -387,6 +461,64 @@ def load_meetings(xlsx_path, meetings_sheet):
     if not meetings_sheet:
         return pd.DataFrame(columns=["Grupo", "Meeting Outputs"])
     return pd.read_excel(xlsx_path, sheet_name=meetings_sheet, header=0, engine="openpyxl")
+
+
+def build_project_lookup(periods, load_projects_fn=load_projects):
+    """Project tag ("GEN_014", "PROT_005", ...) -> {"description", "period"} across EVERY
+    reporting period, not just the current one -- the Gains page's Reuse/Lineage charts cite
+    ids spanning more than one period (e.g. a tag could exist only in one year while another
+    spans several), so a lookup scoped to "the current period" would silently go blank for half of
+    them. `periods` is normally kd.discover_periods()'s result (newest-first); the first
+    period that has a tag wins, so a project keeps whatever its most recent tracker entry
+    says even if an older period also used the same tag for something else. `load_projects_fn`
+    is injectable (kpi_cache passes its own cached wrapper so this join doesn't mean re-reading
+    every period workbook on every rerun) and defaults to this module's own uncached reader for
+    headless callers (the snapshot exporter, tests).
+
+    Never raises: a period workbook that's locked/missing/malformed is skipped rather than
+    failing the whole lookup -- this is a "nice to have" join, not a required one, and a
+    tracker hiccup must never take down the Gains page's Reuse section with it."""
+    lookup = {}
+    for period in periods:
+        try:
+            projects = load_projects_fn(period["file"], period["sheet"])
+        except Exception:
+            continue
+        if "Project tag" not in projects.columns:
+            continue
+        has_desc = "Short Description" in projects.columns
+        for _, row in projects.iterrows():
+            tag = str(row.get("Project tag") or "").strip()
+            if not tag or tag.lower() == "nan":
+                continue
+            key = tag.upper()
+            if key in lookup:
+                continue  # a newer period already claimed this tag; keep its info
+            desc = row.get("Short Description") if has_desc else None
+            desc = str(desc).strip() if pd.notna(desc) and str(desc).strip().lower() != "nan" else ""
+            lookup[key] = {"description": desc, "period": period["label"]}
+    return lookup
+
+
+def project_lookup_label(tag, project_lookup):
+    """A Reuse-chart user-project id -> what to show on hover: the id alone, or the id plus
+    its tracker description/period when `project_lookup` (build_project_lookup's result, or
+    None) has a match. Degrades gracefully by design -- an unmatched id, or no lookup at all,
+    still renders as a plain id, never a crash and never a literal "nan"."""
+    tag = str(tag).strip()
+    info = (project_lookup or {}).get(tag.upper())
+    if not info:
+        return tag
+    # Built piece by piece rather than by joining a list: the em-dash belongs between the id
+    # and its DESCRIPTION, and only then. A tracker sheet with no Short Description column
+    # at all would otherwise join positionally and put the dash in front of the period
+    # instead -- "GEN_014 — (2025)", a dash introducing nothing.
+    label = tag
+    if info.get("description"):
+        label += f" — {info['description']}"
+    if info.get("period"):
+        label += f" ({info['period']})"
+    return label
 
 
 def ordinal_week_label(week_start):
@@ -977,6 +1109,559 @@ def parse_tool_steps(text):
         cells = (cells + ["", "", ""])[:3]
         rows.append(cells)
     return rows
+
+
+# --- Special Projects & Tools: expected gains -------------------------------------------
+EXPECTED_GAINS_PATH = DATA_DIR / "SpecialProjects_Tools_expected_gains_v5.xlsx"
+
+# The workbook has a title row and a note row above the real header on every sheet (the
+# hand-built formatting that makes it readable as an Excel file also makes pandas's default
+# header guess wrong on all of them) -- each sheet's real header lands on raw row 3 (0-indexed).
+_GAINS_HEADER_ROW = 3
+
+# The Gains sheet groups its gain columns under merged headers (row 2, not read as data since
+# the header row is 3) -- GAIN_GROUPS is the dashboard's own record of that grouping (hardcoded
+# since openpyxl would be needed to recover merged-cell labels, and the grouping is a thematic
+# call, not something read off the sheet). Order matters: it drives the display order of
+# gain_summary via GAIN_GROUP_ORDER (kpi_charts.py), built from this dict's value order.
+#
+# The actual set of gain COLUMNS is read fresh from the workbook on every load (see
+# load_expected_gains's `gain_columns`/`gain_groups` below) -- whatever sits between "Project"
+# and "Gain types (n)" on the Gains sheet, not a fixed list of 10 -- so this dict only needs to
+# cover every NAME that's ever been a column header, known or not-yet-added, and never has to
+# be "complete" in the sense of matching column count. A column whose header isn't a key here
+# at load time falls back to GAIN_FALLBACK_GROUP (and is surfaced in the page's Data health
+# section) rather than crashing or silently mis-grouping.
+#
+# "Training & capability building" used to be one conflated column; Sara wants it split into
+# two real gains -- Training (outreach: reaching new people) and User capacitation (teaching
+# existing users to be more self-sufficient) -- see HOW_TO_RUN.md for exactly what to add to
+# the workbook. Both new names are listed below under the groups she asked for, and the old
+# combined name is KEPT mapped to Capability so nothing breaks before/during her edit: today's
+# workbook still only has the old column, and this dict has to recognize it regardless of
+# which column(s) actually exist on any given load.
+GAIN_GROUPS = {
+    "Faster project completion": "Efficiency",
+    "Internal management": "Efficiency",
+    "Training & capability building": "Capability",  # pre-split column; kept for compatibility
+    "User capacitation": "Capability",                # post-split: teaching existing users
+    "AI skills (Bigorna Project)": "Capability",
+    "Pioneering development": "Innovation & visibility",
+    "Flagship project": "Innovation & visibility",
+    "Scientific publication": "Innovation & visibility",
+    "New users / projects reached": "Reach & relationships",
+    "Training": "Reach & relationships",              # post-split: outreach, reaching new people
+    "Cataloguing & outreach": "Reach & relationships",
+    "Collaboration with other facilities": "Reach & relationships",
+}
+
+# Where an unrecognized gain column (a header not in GAIN_GROUPS above) lands, so a column she
+# adds that the dashboard doesn't know about yet still renders somewhere sensible instead of
+# crashing. Also reported by name in the page's Data health section ("gain not assigned to a
+# group yet") so the gap stays visible rather than silently absorbed.
+GAIN_FALLBACK_GROUP = "Capability"
+
+# Genuine spelling/naming differences between this workbook and tools.xlsx/the ratings sheet
+# for the exact same thing (verified by hand, not a typo to "fix") -- without this, a plain
+# name match would call both sides "unmatched". Keyed by the gains workbook's spelling,
+# normalized (stripped + lowercased); _NAME_ALIASES_REV below is the other direction.
+NAME_ALIASES = {
+    "project starter (cookiecutter)": "project starter cockie cutter",
+    # Also a Special Project in the ratings sheet under this exact name -- that match is
+    # preferred for active/potential (see _decide_active), but tools.xlsx's spelling still
+    # needs the alias so it isn't flagged as an unmatched tool.
+    "metabolomics facility dashboard": "metabolomics facility pipeline dashboard",
+    # Sara is renaming "Pipeline" to "OMICs Pipelines" across the dashboard-owned files
+    # (Special_Projects_Ratings.xlsx, special_project_tasks.json); the gains workbook's own
+    # Overview sheet (SP01's Project cell) is read-only from here and gets updated by hand
+    # instead (see HOW_TO_RUN.md). Until -- and in case she ever only renames it in one
+    # place -- this alias keeps the two spellings resolving to the same development no matter
+    # which file still says the old name, so a half-finished rename never drops the match down
+    # to the Status-column fallback (see _decide_state).
+    "pipeline": "omics pipelines",
+}
+_NAME_ALIASES_REV = {v: k for k, v in NAME_ALIASES.items()}
+
+# Status strings (Excel fallback) that count as "already delivering its gains" -- split by
+# which of the two non-Potential states they map to (see _decide_state's fallback branch).
+_FALLBACK_DELIVERED_STATUSES = {"completed"}
+_FALLBACK_IN_USE_STATUSES = {"in use", "in use/in development"}
+
+# An entry in a Reuse-sheet "Came from" cell either names a real user project (GEN_014,
+# PROT_005, ...) or it names something that ITSELF has gains tracked here -- lineage, not
+# reuse of a user's own work. The latter can be written as this workbook's own development
+# ID (SP01, T04, ...) or, now, as a plain name matching a live tool/Special Project that has
+# no row in this workbook at all yet (see _classify_lineage_token) -- either way it must never
+# be counted as a "built out of real user projects" number.
+# This demo's fake project tags are deliberately a different shape from the private
+# original's (no DNA_/STAT_-style codes -- see generate_demo_data.py's module docstring),
+# so the pattern below matches THIS repo's own tag convention: 3-6 letters, underscore,
+# a 3-digit number (GEN_014, PROT_005, STRUCT_002, ...) -- swap it for your own tracker's
+# tag shape if you adapt this dashboard.
+_USER_PROJECT_ID_RE = re.compile(r"^[A-Z]{2,6}_\d{3}$", re.IGNORECASE)
+_DEVELOPMENT_ID_RE = re.compile(r"^(SP\d+|T\d+)$", re.IGNORECASE)
+
+
+def _norm_name(name):
+    return str(name).strip().lower()
+
+
+def _name_variants(name):
+    """A name plus its known alias (if any), normalized -- the set of spellings that should
+    all be treated as "the same development" when matching across files."""
+    norm = _norm_name(name)
+    variants = {norm}
+    if norm in NAME_ALIASES:
+        variants.add(NAME_ALIASES[norm])
+    if norm in _NAME_ALIASES_REV:
+        variants.add(_NAME_ALIASES_REV[norm])
+    return variants
+
+
+def _parse_count_or_constant(value):
+    """A Reuse-sheet "(n)" cell: a number, blank, or the literal text "Constant use" (tools
+    used daily/by everyone were never meaningfully "n projects served"). Returns
+    (count_or_None, is_constant_use)."""
+    if pd.isna(value):
+        return None, False
+    text = str(value).strip()
+    if text.lower() == "constant use":
+        return None, True
+    try:
+        return int(float(text)), False
+    except ValueError:
+        return None, False
+
+
+def _parse_id_list(value):
+    """A comma-separated cell (e.g. "GEN_014, PROT_005, CRC_030") -> a real Python list of
+    raw tokens, so callers don't all re-split the same string. What each token MEANS (a user
+    project, another development, a bare name) is for _classify_lineage_token to decide --
+    this just un-joins the cell."""
+    if pd.isna(value):
+        return []
+    return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def _classify_lineage_token(token, valid_ids, live_name_lookup):
+    """One raw token from a "Came from" cell -> (kind, key, label).
+
+    `kind` is "project" (an id matching _USER_PROJECT_ID_RE -- counts toward came_from_n) or
+    "development" (anything else: this workbook's own SP../T.. ids, OR a free-text name that
+    matches a live tool/Special Project which may not even have a row in this workbook yet,
+    e.g. "motif-scan-from-github" naming a tool that's only in tools_df). `key` is the
+    identity used to index led_to (a development ID as written, or the token's normalized
+    name) and `label` is what to show a person (resolved to the live table's own spelling
+    for a name match, otherwise the token/ID as given).
+
+    `valid_ids` restricts the ID-pattern branch to IDs this workbook actually has (SP01,
+    T04, ...) -- a stray "SP99" that doesn't exist falls through to the name-match / bare-text
+    branch instead of silently being treated as a real development. `live_name_lookup` maps
+    every normalized name variant seen in tools_df/goals_df to that source's own display
+    name (built once by the caller, not per token)."""
+    token = token.strip()
+    if _USER_PROJECT_ID_RE.match(token):
+        return "project", token.upper(), token.upper()
+    upper = token.upper()
+    if _DEVELOPMENT_ID_RE.match(upper) and upper in valid_ids:
+        return "development", upper, upper
+    norm = _norm_name(token)
+    if norm in live_name_lookup:
+        return "development", norm, live_name_lookup[norm]
+    # Unrecognized text: still "not a user project", so it never counts toward came_from_n,
+    # but it won't resolve to anything in led_to either (nothing named it as a live match).
+    return "development", norm, token
+
+
+def _is_parent(dev_id, project_name, led_to_by_name):
+    """True if some OTHER development's "Came from" names this one -- by this workbook's own
+    ID, or by any of this development's own live-name variants (a Came from cell can name a
+    parent either way, see _classify_lineage_token). On its own this is sufficient for "In
+    use" (criterion 2): the thing it spawned is proof it's being used, even with zero user
+    projects served directly (e.g. Pipeline, once Metabolomics Facility Dashboard names it)."""
+    if led_to_by_name.get(dev_id):
+        return True
+    return any(led_to_by_name.get(v) for v in _name_variants(project_name))
+
+
+def _read_gains_sheet(sheet_name, valid_ids):
+    """Read one sub-sheet with the shared header row, then keep only rows whose ID is a
+    real development ID from Overview -- drops the title/note rows above the header and
+    whatever sits below the data (a totals row, a blank row, a legend row) without having
+    to hardcode row counts that would break if a row were ever added or removed."""
+    df = pd.read_excel(EXPECTED_GAINS_PATH, sheet_name=sheet_name, header=_GAINS_HEADER_ROW)
+    df = df[df["ID"].isin(valid_ids)].reset_index(drop=True)
+    return df
+
+
+def _decide_state(category, project_name, status, goals_by_name, tools_by_name,
+                   served_ids, is_parent):
+    """The core Delivered / In use / Potential call for one development -- a pure function of
+    plain values (no DataFrame access), so every branch is directly unit-testable.
+
+    Delivered only ever comes from a Special Project's own Completed date
+    (`goals_by_name[name]` is `_finished`), or, as a fallback with no live match at all, the
+    workbook's own Status column reading "Completed" -- there's no "delivered because XYZ"
+    shortcut the way there is for In use.
+
+    In use is Delivered's weaker sibling -- demonstrably being used, but not (yet) finished
+    and banked -- and ANY of these is enough on its own, independent of how the base status
+    below was decided:
+      1. `served_ids` is non-empty (it serves at least one real user project), or
+      2. `is_parent` is True (some OTHER development names this one as where it came from --
+         itself proof of use, with no served project required), or
+      3. it's matched as a Tool whose live Status isn't Deprecated.
+    Live dashboard data wins the BASE status when it's available and matches by name; the
+    Excel's own Status column is only a fallback for the base -- the workbook's Notes sheet
+    says those statuses were filled in as a blanket guess ("Tools = In use, Special Projects
+    = In development"), not verified per row. Criteria 1/2 above can still elevate that
+    fallback-decided base from Potential to In use.
+
+    Returns (state, match_source) -- match_source ("ratings"/"tools"/"status") names which
+    live table decided the BASE status, same meaning as before the 3-state split."""
+    variants = _name_variants(project_name)
+    delivered = False
+    in_use = False
+    match_source = "status"
+
+    if category == "Special Project" and goals_by_name is not None:
+        for v in variants:
+            if v in goals_by_name:
+                delivered = bool(goals_by_name[v])
+                match_source = "ratings"
+                break
+
+    if match_source == "status" and category == "Tools" and tools_by_name is not None:
+        for v in variants:
+            if v in tools_by_name:
+                in_use = tools_by_name[v] != "deprecated"
+                match_source = "tools"
+                break
+
+    if match_source == "status":
+        norm_status = _norm_name(status)
+        if norm_status in _FALLBACK_DELIVERED_STATUSES:
+            delivered = True
+        elif norm_status in _FALLBACK_IN_USE_STATUSES:
+            in_use = True
+
+    if delivered:
+        return "Delivered", match_source
+    if in_use or bool(served_ids) or is_parent:
+        return "In use", match_source
+    return "Potential", match_source
+
+
+def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
+    """Read SpecialProjects_Tools_expected_gains_v5.xlsx -- the catalogue of Special
+    Projects' and Tools' expected (or already-delivered) gains -- and fold it together with
+    whatever's live on the dashboard. Optional `goals_df` (load_goals()) and `tools_df`
+    (load_tools()) let a Special Project / Tool's real status override the Excel's own
+    Status column for the Delivered/In use/Potential call (see _decide_state); pass neither
+    to fall back to the Excel alone, e.g. from a context that hasn't loaded them. Optional
+    `project_lookup` (build_project_lookup()'s result) joins the Reuse sheet's project-tag
+    ids to the real project tracker, across every reporting period -- see "unmatched_reuse_ids"
+    below for what happens when an id has no match.
+
+    Returns a dict:
+      - "developments": one row per Overview row, all its columns cleaned (the 5 x/blank
+        flag columns parsed to bool), plus "active" (bool, state != "Potential"), "state"
+        ("Delivered"/"In use"/"Potential"), "match_source" ("ratings"/"tools"/"status" --
+        which rule decided the BASE status, see _decide_state), "led_to" (readable names of
+        other developments naming this one as a parent), and "constant_use" (bool, from Use
+        pattern).
+      - "gains_long": tidy, one row per (development, gain) marked "x" -- ID, Project,
+        Category, Gain, Group, active, state.
+      - "gain_summary": one row per gain ACTUALLY present on the Gains sheet (even ones with
+        zero rows) -- Gain, Group, n_delivered, n_in_use, n_potential, n_active (= delivered +
+        in use), n_total, active_projects, potential_projects, delivered_projects,
+        in_use_projects (name lists, for chart hover), sorted by n_total descending. The gain
+        set is read fresh from the sheet every load (see "gain_columns" below), not a fixed
+        list of 10 -- works whether the sheet has 9, 10, 11 or 12 gain columns.
+      - "gain_columns": the gain column headers actually found between "Project" and "Gain
+        types (n)" on the Gains sheet, in sheet order -- what gain_summary/gains_long iterate
+        over, and what the charts need to size/order themselves instead of assuming GAIN_GROUPS'
+        historical 10.
+      - "gain_groups": {gain column name: group name} for exactly the columns in
+        "gain_columns" (GAIN_GROUPS' mapping where the name is recognized, else
+        GAIN_FALLBACK_GROUP) -- what the charts use to band/colour columns, instead of
+        consulting the static GAIN_GROUPS dict directly.
+      - "ungrouped_gains": gain column names present on the sheet but NOT in GAIN_GROUPS --
+        i.e. silently mapped to GAIN_FALLBACK_GROUP above rather than a group Sara actually
+        picked for them. Surfaced in the page's Data health section so a newly-added column
+        with an unrecognized name doesn't quietly land in the wrong theme unnoticed.
+      - "reuse": the Reuse sheet, come_from/serves columns as real lists, came_from_n /
+        serves_n as nullable ints (came_from_n counts ONLY ids matching _USER_PROJECT_ID_RE --
+        see came_from_projects below), constant_use bool, led_to, joined to active/state.
+        came_from_ids / serves_ids keep their old meaning (the raw token lists); on top of
+        those: came_from_projects (_USER_PROJECT_ID_RE matches only), came_from_developments (this
+        workbook's own ids, or a bare name, for anything in "Came from" that is NOT a user
+        project -- lineage, not reuse).
+      - "value": the Value sheet, unit_price numeric-or-None, joined to active/state.
+      - "notes": the Notes sheet's free-text lines as a list of strings (title row dropped).
+      - "unmatched_tools": non-deprecated tools_df names with no row in this workbook at all
+        (by name, alias included) -- a data-health check, not restricted to rows categorized
+        "Tools" (e.g. a tool that's actually catalogued here as a Special Project still
+        counts as matched).
+      - "unmatched_projects": same idea for goals_df project names.
+      - "unmatched_reuse_ids": project-tag ids used in the Reuse sheet's "Came from" or
+        "User projects served" columns that match no project in `project_lookup` across any
+        period -- a typo catcher (only populated when `project_lookup` is given; empty, not
+        wrongly "all unmatched", when it's None).
+      - "led_to_by_name": the full lineage reverse-index, keyed by EVERY parent identity seen
+        in any "Came from" cell (a workbook ID like "SP01", or a normalized free-text name) --
+        not just ones with their own Overview row, so a tool like "motif-scan-from-github"
+        that isn't catalogued here at all can still be looked up (`led_to_by_name[norm_name]`)
+        without KeyError. "developments"/"reuse"["led_to"] is this same dict filtered down to
+        workbook rows and resolved to display names, for the page to render directly.
+    May raise FileNotFoundError / PermissionError -- callers show a friendly message, same
+    as load_tools().
+    """
+    overview = pd.read_excel(EXPECTED_GAINS_PATH, sheet_name="Overview", header=_GAINS_HEADER_ROW)
+    overview.columns = [str(c).strip() for c in overview.columns]
+    overview = overview[overview["ID"].astype(str).str.strip() != ""].reset_index(drop=True)
+    for col in ["ID", "Category", "Goal", "Project", "Status", "Output level", "Expected gains"]:
+        overview[col] = overview[col].astype(str).str.strip()
+    flag_cols = [
+        "Internal users", "External users", "Facility use / collaboration",
+        "Publication potential", "Market-equivalent value",
+    ]
+    for col in flag_cols:
+        overview[col] = overview[col].astype(str).str.strip().str.lower() == "x"
+    overview["constant_use"] = overview["Use pattern"].astype(str).str.strip() == "Constant use"
+
+    valid_ids = set(overview["ID"])
+    category_by_id = dict(zip(overview["ID"], overview["Category"]))
+    project_name_by_id = dict(zip(overview["ID"], overview["Project"]))
+
+    # Name -> live-status lookups, built once rather than per-row.
+    goals_by_name = None
+    if goals_df is not None:
+        goals_by_name = {_norm_name(p): f for p, f in zip(goals_df["Project"], goals_df["_finished"])}
+    tools_by_name = None
+    if tools_df is not None:
+        tools_by_name = {_norm_name(n): _norm_name(s) for n, s in zip(tools_df["Name"], tools_df["Status"])}
+
+    # Every live name (tool or Special Project) this dashboard knows about, normalized ->
+    # that source's own display spelling -- lets a "Came from" cell name a parent that has NO
+    # row in this workbook at all (e.g. "motif-scan-from-github") and still have it resolve as
+    # lineage instead of being silently miscounted as an unrecognized user project.
+    live_name_lookup = {}
+    if tools_df is not None:
+        for n in tools_df["Name"]:
+            for v in _name_variants(n):
+                live_name_lookup.setdefault(v, n)
+    if goals_df is not None:
+        for n in goals_df["Project"]:
+            for v in _name_variants(n):
+                live_name_lookup.setdefault(v, n)
+
+    # --- Reuse: parsed early, since the lineage it records (who's a parent of whom, who
+    # serves a real user project) feeds directly into the Delivered/In use/Potential call
+    # below, not just into the Reuse section's own chart. ---------------------------------
+    reuse = _read_gains_sheet("Reuse", valid_ids)
+    came_from_counted = [_parse_count_or_constant(v) for v in reuse["Came from (n)"]]
+    served_counted = [_parse_count_or_constant(v) for v in reuse["User projects served (n)"]]
+    reuse["serves_n"] = pd.array([c for c, _ in served_counted], dtype="Int64")
+    # "Constant use" can show up under either count column (today it's only ever the
+    # "served" one) -- either is enough to call the development constant-use.
+    reuse["constant_use"] = [a or b for (_, a), (_, b) in zip(came_from_counted, served_counted)]
+    reuse["came_from_ids"] = reuse["Came from: user projects"].map(_parse_id_list)
+    reuse["serves_ids"] = reuse["User projects served: list"].map(_parse_id_list)
+    reuse["serves_project_ids"] = reuse["serves_ids"].map(
+        lambda ids: [i for i in ids if _USER_PROJECT_ID_RE.match(i)]
+    )
+
+    came_from_projects_col, came_from_developments_col = [], []
+    led_to_by_name = {}
+    for dev_id, tokens in zip(reuse["ID"], reuse["came_from_ids"]):
+        child_name = project_name_by_id.get(dev_id, dev_id)
+        projects, developments_here = [], []
+        for token in tokens:
+            kind, key, label = _classify_lineage_token(token, valid_ids, live_name_lookup)
+            if kind == "project":
+                projects.append(key)
+            else:
+                developments_here.append(label)
+                led_to_by_name.setdefault(key, []).append(child_name)
+        came_from_projects_col.append(projects)
+        came_from_developments_col.append(developments_here)
+    reuse["came_from_projects"] = came_from_projects_col
+    reuse["came_from_developments"] = came_from_developments_col
+    # Trust the parsed ids over the "(n)" column's cached Excel-formula value whenever ids
+    # were actually listed (see module docstring note on load_expected_gains) -- only fall
+    # back to the typed number for the handful of rows that have a count with no ids (today:
+    # OmicsXplorer, Curated MS-omics tools, omics-inputs-agent). Crucially this counts
+    # came_from_PROJECTS only -- a lineage parent added to the same cell (came_from_developments)
+    # must never inflate this number.
+    reuse["came_from_n"] = pd.array(
+        [len(projs) if projs else typed for projs, (typed, _) in zip(came_from_projects_col, came_from_counted)],
+        dtype="Int64",
+    )
+
+    served_project_ids_by_id = dict(zip(reuse["ID"], reuse["serves_project_ids"]))
+    is_parent_by_id = {
+        dev_id: _is_parent(dev_id, project_name_by_id.get(dev_id, dev_id), led_to_by_name)
+        for dev_id in overview["ID"]
+    }
+
+    decided = [
+        _decide_state(cat, proj, status, goals_by_name, tools_by_name,
+                       served_project_ids_by_id.get(dev_id, []), is_parent_by_id.get(dev_id, False))
+        for dev_id, cat, proj, status in
+        zip(overview["ID"], overview["Category"], overview["Project"], overview["Status"])
+    ]
+    overview["state"] = [d[0] for d in decided]
+    overview["match_source"] = [d[1] for d in decided]
+    overview["active"] = overview["state"] != "Potential"
+    overview["led_to"] = overview["ID"].map(lambda i: led_to_by_name.get(i, []))
+
+    active_by_id = dict(zip(overview["ID"], overview["active"]))
+    state_by_id = dict(zip(overview["ID"], overview["state"]))
+
+    # --- Gains: wide x-marks -> tidy one-row-per-(development, gain) -------------------
+    gains_raw = _read_gains_sheet("Gains", valid_ids)
+
+    # The gain columns are whatever actually sits between "Project" and "Gain types (n)" on
+    # this sheet -- never assumed to be a fixed set of 10, so the Gains sheet can gain (or, in
+    # principle, lose) a column -- e.g. Sara splitting "Training & capability building" into
+    # "Training" + "User capacitation" -- without any code change. Falls back to whichever of
+    # GAIN_GROUPS' historically-known names are actually present if the sheet's own "Project"/
+    # "Gain types (n)" boundary headers are ever renamed or missing, rather than raising.
+    _cols = list(gains_raw.columns)
+    try:
+        _start = _cols.index("Project") + 1
+        _end = _cols.index("Gain types (n)")
+        gain_columns = [c for c in _cols[_start:_end] if c and not str(c).startswith("Unnamed")]
+    except ValueError:
+        gain_columns = [c for c in GAIN_GROUPS if c in _cols]
+
+    # Group assignment is name-based (matched case/whitespace-insensitively against GAIN_GROUPS)
+    # so a column's position on the sheet never matters, only its header text. A column whose
+    # name isn't recognized at all still gets a group (GAIN_FALLBACK_GROUP) rather than crashing
+    # or being dropped -- and is listed in ungrouped_gains so it doesn't silently go unnoticed.
+    _known_groups = {_norm_name(k): v for k, v in GAIN_GROUPS.items()}
+    gain_groups = {}
+    ungrouped_gains = []
+    for gain in gain_columns:
+        group = _known_groups.get(_norm_name(gain))
+        if group is None:
+            group = GAIN_FALLBACK_GROUP
+            ungrouped_gains.append(gain)
+        gain_groups[gain] = group
+
+    long_rows = []
+    for _, row in gains_raw.iterrows():
+        for gain in gain_columns:
+            if str(row.get(gain, "")).strip().lower() == "x":
+                long_rows.append({
+                    "ID": row["ID"],
+                    "Project": row["Project"],
+                    "Category": category_by_id.get(row["ID"], ""),
+                    "Gain": gain,
+                    "Group": gain_groups[gain],
+                    "active": active_by_id.get(row["ID"], False),
+                    "state": state_by_id.get(row["ID"], "Potential"),
+                })
+    gains_long = pd.DataFrame(long_rows, columns=["ID", "Project", "Category", "Gain", "Group", "active", "state"])
+
+    summary_rows = []
+    for gain in gain_columns:
+        subset = gains_long[gains_long["Gain"] == gain]
+        delivered_rows = subset[subset["state"] == "Delivered"]
+        in_use_rows = subset[subset["state"] == "In use"]
+        potential_rows = subset[subset["state"] == "Potential"]
+        active_rows = subset[subset["active"]]
+        summary_rows.append({
+            "Gain": gain,
+            "Group": gain_groups[gain],
+            "n_delivered": len(delivered_rows),
+            "n_in_use": len(in_use_rows),
+            "n_potential": len(potential_rows),
+            "n_active": len(active_rows),
+            "n_total": len(subset),
+            "active_projects": list(active_rows["Project"]),
+            "potential_projects": list(potential_rows["Project"]),
+            "delivered_projects": list(delivered_rows["Project"]),
+            "in_use_projects": list(in_use_rows["Project"]),
+        })
+    gain_summary = pd.DataFrame(summary_rows).sort_values("n_total", ascending=False).reset_index(drop=True)
+
+    # --- Reuse (continued): now that state is decided, join it back in -------------------
+    reuse["led_to"] = reuse["ID"].map(lambda i: led_to_by_name.get(i, []))
+    reuse["active"] = reuse["ID"].map(active_by_id)
+    reuse["state"] = reuse["ID"].map(state_by_id)
+
+    # --- Value -----------------------------------------------------------------------------
+    value = _read_gains_sheet("Value", valid_ids)
+    unit_price = pd.to_numeric(value["Unit price (€)"], errors="coerce")
+    # Plain "object" dtype on purpose: a float column would silently turn this None back
+    # into NaN (pandas has no non-NA-extension-array way to hold a real None alongside
+    # floats), and callers checking "is None" (a blank price, like Hands-on workshop's)
+    # should get exactly that.
+    value["unit_price"] = pd.array(
+        [float(p) if pd.notna(p) else None for p in unit_price], dtype=object
+    )
+    value["active"] = value["ID"].map(active_by_id)
+    value["state"] = value["ID"].map(state_by_id)
+
+    # --- Notes: free text, title row dropped ------------------------------------------------
+    notes_raw = pd.read_excel(EXPECTED_GAINS_PATH, sheet_name="Notes", header=None)
+    notes = [
+        str(v).strip() for v in notes_raw.iloc[1:, 0]
+        if pd.notna(v) and str(v).strip()
+    ]
+
+    # --- Data-health: names on the live side with no row here at all -----------------------
+    overview_variants = set()
+    for name in overview["Project"]:
+        overview_variants |= _name_variants(name)
+    unmatched_tools = []
+    if tools_df is not None:
+        # Deprecated tools are deliberately NOT reported as missing: this list exists to
+        # prompt "that one still needs a gains row", and a retired tool never will -- it has
+        # no gains left to expect. Flagging it would be a to-do item that can't be closed.
+        live_tools = tools_df[tools_df["Status"].astype(str).str.strip() != "Deprecated"]
+        unmatched_tools = [
+            name for name in live_tools["Name"]
+            if not (_name_variants(name) & overview_variants)
+        ]
+    unmatched_projects = []
+    if goals_df is not None:
+        unmatched_projects = [
+            name for name in goals_df["Project"]
+            if not (_name_variants(name) & overview_variants)
+        ]
+
+    # A Reuse-sheet user-project id that matches no tracker entry in ANY period is usually a
+    # typo (GEN_014 vs GEN_O14, a stray space, ...) -- worth flagging, but only when there's
+    # something to check against; with no project_lookup at all this is silently empty rather
+    # than wrongly flagging every id as unmatched.
+    unmatched_reuse_ids = []
+    if project_lookup is not None:
+        seen_ids = set()
+        for ids in reuse["came_from_projects"]:
+            seen_ids.update(ids)
+        for ids in reuse["serves_project_ids"]:
+            seen_ids.update(ids)
+        unmatched_reuse_ids = sorted(i for i in seen_ids if i.upper() not in project_lookup)
+
+    return {
+        "developments": overview,
+        "gains_long": gains_long,
+        "gain_summary": gain_summary,
+        "gain_columns": gain_columns,
+        "gain_groups": gain_groups,
+        "ungrouped_gains": ungrouped_gains,
+        "reuse": reuse,
+        "value": value,
+        "notes": notes,
+        "unmatched_tools": unmatched_tools,
+        "unmatched_projects": unmatched_projects,
+        "unmatched_reuse_ids": unmatched_reuse_ids,
+        "project_lookup": project_lookup,
+        "led_to_by_name": led_to_by_name,
+    }
 
 
 # --- Beyond-projects cards (per period, dashboard-only state like the task checklists) ----

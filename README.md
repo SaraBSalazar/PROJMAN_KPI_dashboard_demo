@@ -118,19 +118,38 @@ generate_demo_data.py   writes every file under Data/ from invented placeholders
 
 ### Pages
 
-- **Week / Month / Year** (main page) — hours by project and major task, week-over-week
+The sidebar groups these under three headings, so the pages about things *built* sit
+together instead of being scattered through one flat list.
+
+**Reporting**
+
+- **Overview** (the page you land on) — hours by project and major task, week-over-week
   change, category distribution, active projects, projects received vs finished, and the
   editable time-log table.
 - **Projects Review** — year at a glance, needs attention, project turnaround, hours by
   project, complexity, project definition, who-we-work-with, consulting, non-quantifiable
   outputs, and "beyond projects" cards. Driven purely by the project tracker, so it works
   for a period that predates the time log.
+
+**Development**
+
 - **Special Projects** — goal-rating bubble chart, per-project cards, task checklists with
   planned dates, and predicted timelines. A delivered project can be marked finished, which
   gives its bubble a green ring and a ✓ and puts a finish date on its card.
-- **Add Data** — quick-add and edit forms for projects and consultation meetings.
 - **Tools & AI Skills** — inventory of tools and automations built, with a breakdown by
   type, use, and project origin.
+- **Gains & Outputs** — what those projects and tools are expected to deliver, and how much
+  of it is landing already. Each one is **Delivered**, **In use & developing**, or
+  **Potential** — and that is read off the live data rather than taken on trust, so marking
+  a special project finished (or a tool deprecated) moves its gains here by itself. Holds
+  the gains split by state and banded by theme, a developments × gains matrix, audience and
+  outputs, reuse drawn in both directions (what a development was built out of, and what
+  benefits from it), a lineage tree of which developments grew out of which, and a card per
+  development. Read-only.
+
+**Data**
+
+- **Add Data** — quick-add and edit forms for projects and consultation meetings.
 
 Appending `?readonly=true` to any page URL hides every editing control. It's a display
 flag, **not** authentication — anyone can remove it from the URL.
@@ -156,6 +175,7 @@ tied to its own institution's fiscal calendar — see the note below.)
 | `Data/custom_tags.json` | Remembers new dropdown options until they're used in a saved row. |
 | `Data/tools.xlsx` | Tools/automations inventory. |
 | `Data/project_pause_notes.json` | Per-pause notes and "forgive" flags on the turnaround chart (Projects Review) — a forgiven pause's days are excluded from that project's turnaround medians. |
+| `Data/SpecialProjects_Tools_expected_gains_v5.xlsx` | What each special project and tool is expected to deliver, which user projects it grew out of and which benefit from it (Gains & Outputs). Read-only to the dashboard — gain columns are discovered from the sheet, so adding a new kind of gain needs no code change. |
 
 The two JSON files are the dashboard's working copies because they hold shapes (a nested
 to-do list, free-text cards) that don't map onto any existing spreadsheet column; the

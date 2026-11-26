@@ -92,6 +92,33 @@ def load_tools():
 
 
 @st.cache_data(show_spinner=False)
+def _build_project_lookup(mtime_key):
+    # discover_periods()/load_projects() are called directly (not through this module's own
+    # cached wrappers) to avoid one cached function calling another under the hood -- this is
+    # already cached at this level, keyed on every period file's own mtime below.
+    return kd.build_project_lookup(kd.discover_periods(), kd.load_projects)
+
+
+def build_project_lookup():
+    return _build_project_lookup(_period_files_key())
+
+
+@st.cache_data(show_spinner=False)
+def _load_expected_gains(mtime_key, period_key):
+    # goals_df/tools_df/project_lookup are DataFrames/dicts -- not hashable, so they can't be
+    # cache-key params. Loaded here instead; this function's own cache still only recomputes
+    # when one of the source files (gains workbook, ratings sheet, tools inventory, or any
+    # period workbook the Reuse-to-tracker join reads) actually changes.
+    return kd.load_expected_gains(kd.load_goals(), kd.load_tools(), _build_project_lookup(period_key))
+
+
+def load_expected_gains():
+    period_key = _period_files_key()
+    mtime_key = (_mtime(kd.EXPECTED_GAINS_PATH), _mtime(kd.GOALS_PATH), _mtime(kd.TOOLS_PATH))
+    return _load_expected_gains(mtime_key, period_key)
+
+
+@st.cache_data(show_spinner=False)
 def _load_project_tasks(mtime_key):
     return kd.load_project_tasks()
 

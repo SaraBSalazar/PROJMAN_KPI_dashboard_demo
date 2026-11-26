@@ -224,6 +224,7 @@ want (weekly, daily, ...). A few things worth knowing:
 | Week tab → "➕ New tag" (project / category / major task)           | `Data/custom_tags.json` (so new tags stay in the dropdowns across restarts, even before they're used in a saved row) |
 | Tools & AI Skills → "Edit a tool" and the "All tools" table         | `Data/tools.xlsx`                                                                                                    |
 | Projects Review → Turnaround → "⏸ Pauses" note / forgive checkbox  | `Data/project_pause_notes.json` (forgiving a pause subtracts just its days from that project's turnaround figures, rather than excluding the whole project) |
+| Gains & Outputs                                                     | *nothing* — this page is read-only. It reads `Data/SpecialProjects_Tools_expected_gains_v5.xlsx` and cross-checks it against the live ratings and tools data; edit that workbook directly to change what it shows. |
 
 Everything in the table above writes to disk immediately when you click its Save/Add
 button — nothing is held only in the browser session, and everything you can change ends up

@@ -512,6 +512,257 @@ def build_tools():
     print(f"wrote {path} ({len(df)} tools)")
 
 
+# --- 5b) Expected gains workbook: Data/SpecialProjects_Tools_expected_gains_v5.xlsx --------
+# Read by Dashboard/kpi_data.py's load_expected_gains() and shown on the Gains & Outputs page.
+# Column shapes here mirror the private original's own workbook exactly (same sheet names,
+# same "title row + note row + blank row + real header on raw row 3" layout every sheet uses --
+# see kd._GAINS_HEADER_ROW) since that's the contract the loader actually depends on; the
+# CONTENT is entirely invented, but it deliberately reuses THIS script's own generated names --
+# SPECIAL_PROJECTS' project names, TOOLS' tool names, FAKE_PROJECT_TAGS' project tags -- rather
+# than inventing a separate vocabulary, since the loader joins this workbook to the live ratings
+# sheet / tools inventory / project tracker purely BY NAME, and a mismatched name here would
+# silently fall back to the workbook's own provisional Status column instead of the real
+# Delivered/In use/Potential call, or drop a Reuse id as "unmatched".
+EXPECTED_GAINS_IDS = {
+    "Open Analysis Toolkit": "SP01", "Hands-on Workshop": "SP02", "Request Triage Tool": "SP03",
+    "Template Library": "SP04", "Dataset Browser": "SP05", "Snippet Library": "SP06",
+    "QC Dashboard": "T01", "variant-highlighter-skill": "T02", "intake-formatter-agent": "T03",
+}
+# "Report Builder" (TOOLS' 4th entry) is deliberately NOT given a row here -- a live, non-
+# deprecated tool with nothing catalogued in this workbook, so the Gains page's Data health
+# section has something real to flag ("unmatched_tools").
+
+# One column per gain, grouped exactly like the private original's kd.GAIN_GROUPS -- including
+# "Training" and "User capacitation" as the two already-split columns (not the old combined
+# "Training & capability building"), so the demo shows off the split the loader's dynamic
+# gain-column discovery exists for, straight out of the box.
+GAIN_COLUMNS = [
+    ("Faster project completion", "Efficiency"), ("Internal management", "Efficiency"),
+    ("User capacitation", "Capability"), ("AI skills (Bigorna Project)", "Capability"),
+    ("Pioneering development", "Innovation & visibility"), ("Flagship project", "Innovation & visibility"),
+    ("Scientific publication", "Innovation & visibility"),
+    ("New users / projects reached", "Reach & relationships"), ("Training", "Reach & relationships"),
+    ("Cataloguing & outreach", "Reach & relationships"), ("Collaboration with other facilities", "Reach & relationships"),
+]
+
+# Overview rows: (Project, Category, Goal, Status, Output level, Expected gains, flags..., gains
+# marked, Came from (n)/cell, served (n)/cell, Reuse level, Use pattern). Two developments
+# (Hands-on Workshop, Snippet Library) are Delivered purely because build_special_projects()
+# above gives them a Completed date -- this workbook's own "Status" text never overrides that.
+# Lineage ("Came from: user projects" naming ANOTHER development by its own ID here, not a user
+# project) gives two development-to-development chains: QC Dashboard (a TOOL) -> Dataset
+# Browser, and Request Triage Tool -> Template Library -- so the evolution tree has real edges
+# to draw instead of the empty state. Served/came-from ids are real FAKE_PROJECT_TAGS, so the
+# project-tracker join resolves them instead of leaving them "unmatched".
+EXPECTED_GAINS_OVERVIEW = [
+    # Project, Category, Goal, Status, Output level, Expected gains,
+    # [Internal, External, Facility, Publication, Market] flags,
+    # gains marked (subset of GAIN_COLUMNS names),
+    # came_from_cell, served_cell, reuse_level, use_pattern
+    ("Open Analysis Toolkit", "Special Project", "01 - Reach more research groups", "In development",
+     "Internal ADA", "Reusable toolkit reaching new research groups; cataloguing & outreach materials.",
+     [True, True, False, False, False],
+     ["Faster project completion", "New users / projects reached", "Cataloguing & outreach"],
+     "META_012, SEQ_022", "", "Not defined", "Project-specific"),
+    ("Hands-on Workshop", "Special Project", "01 - Reach more research groups", "Completed",
+     "Internal ADA", "Hands-on outreach training; builds user capacitation among participants.",
+     [True, True, False, False, True],
+     ["Training", "User capacitation", "New users / projects reached"],
+     "IMMU_017", "CRC_030", "Not defined", "Project-specific"),
+    ("Request Triage Tool", "Special Project", "02 - Reduce turnaround time", "In use",
+     "Internal ADA", "Faster project completion via automated intake triage; less admin overhead.",
+     [True, False, True, False, True],
+     ["Faster project completion", "Internal management"],
+     "CRC_031, PLNT_004", "GEN_014, PROT_005", "Not defined", "Project-specific"),
+    ("Template Library", "Special Project", "02 - Reduce turnaround time", "In development",
+     "Internal ADA", "Faster, more consistent report/figure templates; less repeat setup work.",
+     [True, False, False, False, False],
+     ["Faster project completion", "Internal management"],
+     "SP03", "", "Not defined", "Project-specific"),
+    ("Dataset Browser", "Special Project", "03 - Build internal tooling", "In development",
+     "Internal ADA", "Internal dataset exploration; early AI-assisted QC'd-dataset browsing.",
+     [True, False, False, False, False],
+     ["Internal management", "AI skills (Bigorna Project)"],
+     "T01", "", "Not defined", "Project-specific"),
+    ("Snippet Library", "Special Project", "03 - Build internal tooling", "Completed",
+     "Internal Worker", "Faster onboarding via reusable code snippets; builds user capacitation.",
+     [True, False, False, False, True],
+     ["Faster project completion", "User capacitation"],
+     "", "IMG_015", "Not defined", "Project-specific"),
+    ("QC Dashboard", "Tools", "Tool infrastructure", "In use",
+     "Facility", "Pioneering facility-specific QC dashboard; strengthens facility collaboration.",
+     [True, True, True, False, True],
+     ["Pioneering development", "Flagship project", "Collaboration with other facilities"],
+     "", "LIP_003, META_008, SEQ_019", "Not defined", "Project-specific"),
+    ("variant-highlighter-skill", "Tools", "Tool infrastructure", "In use",
+     "User", "AI-assisted variant visualization; potential scientific publication.",
+     [False, True, False, True, True],
+     ["AI skills (Bigorna Project)", "Scientific publication"],
+     "", "IMG_006, STRUCT_002", "Not defined", "Project-specific"),
+    ("intake-formatter-agent", "Tools", "Tool infrastructure", "In use",
+     "Internal ADA", "Faster project completion via automated intake formatting; constant internal use.",
+     [True, False, False, False, False],
+     ["Internal management", "Faster project completion"],
+     "", "", "Constant use", "Constant use"),
+]
+
+# Value sheet: researched market-equivalent prices for a handful of developments (by name --
+# joined to EXPECTED_GAINS_IDS below). Snippet Library deliberately has NO price, the same way
+# the private original's own Hands-on workshop row does, to exercise the page's blank-price
+# ("-") rendering.
+EXPECTED_GAINS_VALUE = [
+    ("Hands-on Workshop", "Internal + External", "Equivalent paid training workshop", 450, "per session"),
+    ("Snippet Library", "Internal Team", "Developer onboarding time saved", None, ""),
+    ("Request Triage Tool", "Facility", "Equivalent admin intake triage service", 120, "per month"),
+    ("QC Dashboard", "Facility", "Equivalent commercial QC dashboard licence", 2000, "per year"),
+    ("variant-highlighter-skill", "External Research Group",
+     "Equivalent bioinformatics visualization consulting", 80, "per hour"),
+]
+
+EXPECTED_GAINS_NOTES = [
+    "Notes & assumptions",  # title row -- dropped by the loader
+    "Status column is this workbook's own provisional guess (Tools = In use, Special Projects "
+    "= In development) -- not verified per row; the dashboard's live Delivered/In use/Potential "
+    "call (kd._decide_state) overrides it wherever a name match is found in the ratings sheet "
+    "or tools inventory.",
+    "Market-equivalent values are invented, illustrative prices for this demo only -- not real "
+    "income, and nothing on the page ever totals them.",
+    "Report Builder (tools.xlsx) is intentionally NOT catalogued here, to demonstrate the "
+    "Gains page's Data health 'unmatched tools' check.",
+    "'Came from: user projects' on Template Library and Dataset Browser names another "
+    "development's own ID (Request Triage Tool / QC Dashboard) rather than a user project -- "
+    "that's lineage, not reuse, and QC Dashboard being a Tool shows a tool can be the parent "
+    "of a Special Project too.",
+]
+
+
+def _write_gains_sheet_header(ws, title, note, header_cols, group_row=None):
+    """Shared 'title row (1) + note row (2) + blank row (3) + real header (row 4)' layout
+    every sheet in this workbook uses -- kd._GAINS_HEADER_ROW (0-indexed 3) is where pandas is
+    told to start reading. `group_row`, if given, is written into row 3 instead of left blank
+    (the Gains sheet's merged Efficiency/Capability/... band -- cosmetic only, kd.GAIN_GROUPS
+    is the dashboard's own hardcoded record of that grouping, not read off this row)."""
+    ws.append([title])
+    ws.append([note])
+    ws.append(group_row or [])
+    ws.append(header_cols)
+
+
+def build_expected_gains():
+    sp_names = {p[1] for p in SPECIAL_PROJECTS}
+    tool_names = {t[0] for t in TOOLS}
+    for name, dev_id in EXPECTED_GAINS_IDS.items():
+        if dev_id.startswith("SP"):
+            assert name in sp_names, f"{name!r} (gains workbook) isn't a SPECIAL_PROJECTS name"
+        else:
+            assert name in tool_names, f"{name!r} (gains workbook) isn't a TOOLS name"
+    for cell in (row[8] for row in EXPECTED_GAINS_OVERVIEW):
+        for tok in (t.strip() for t in cell.split(",") if t.strip()):
+            if tok in EXPECTED_GAINS_IDS.values():
+                continue  # a lineage reference to another development's ID, not a project tag
+            assert tok in FAKE_PROJECT_TAGS, f"{tok!r} (Came from) isn't a FAKE_PROJECT_TAGS tag"
+    for cell in (row[9] for row in EXPECTED_GAINS_OVERVIEW):
+        for tok in (t.strip() for t in cell.split(",") if t.strip()):
+            assert tok in FAKE_PROJECT_TAGS, f"{tok!r} (served) isn't a FAKE_PROJECT_TAGS tag"
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    # --- Overview ---------------------------------------------------------------------------
+    ws = wb.create_sheet("Overview")
+    _write_gains_sheet_header(
+        ws, "Special Projects & Tools: expected gains and potential outputs (demo)",
+        "All content below is invented for this public demo -- see generate_demo_data.py.",
+        ["ID", "Category", "Goal", "Project", "Status", "Output level", "Expected gains",
+         "Internal users", "External users", "Facility use / collaboration",
+         "Publication potential", "Market-equivalent value",
+         "Came from: user projects (n)", "User projects served (n)", "Reuse level (served)",
+         "Gain types (n)", "Use pattern"],
+    )
+    for project, category, goal, status, output_level, gains_text, flags, gains_marked, \
+            came_from_cell, served_cell, reuse_level, use_pattern in EXPECTED_GAINS_OVERVIEW:
+        dev_id = EXPECTED_GAINS_IDS[project]
+        came_from_n = (None if not came_from_cell else
+                       0 if any(t.strip() in EXPECTED_GAINS_IDS.values()
+                                for t in came_from_cell.split(",")) else
+                       len([t for t in came_from_cell.split(",") if t.strip()]))
+        served_n = ("Constant use" if use_pattern == "Constant use" else
+                    (len([t for t in served_cell.split(",") if t.strip()]) or None))
+        ws.append([
+            dev_id, category, goal, project, status, output_level, gains_text,
+            *(["x" if f else None for f in flags]),
+            ("n/a" if use_pattern == "Constant use" and not came_from_cell else came_from_n),
+            served_n, reuse_level, len(gains_marked), use_pattern,
+        ])
+
+    # --- Gains (wide x-marks, one column per gain, grouped under a merged-style row 3) -------
+    ws = wb.create_sheet("Gains")
+    group_row = [None, None]
+    for name, group in GAIN_COLUMNS:
+        group_row.append(group)
+    group_row.append(None)
+    _write_gains_sheet_header(
+        ws, "Expected gains by project (demo)",
+        "x = development is expected to deliver this gain.",
+        ["ID", "Project"] + [name for name, _ in GAIN_COLUMNS] + ["Gain types (n)"],
+        group_row=group_row,
+    )
+    for row in EXPECTED_GAINS_OVERVIEW:
+        project, gains_marked = row[0], row[7]
+        dev_id = EXPECTED_GAINS_IDS[project]
+        marks = ["x" if name in gains_marked else None for name, _ in GAIN_COLUMNS]
+        ws.append([dev_id, project, *marks, len(gains_marked)])
+
+    # --- Reuse --------------------------------------------------------------------------------
+    ws = wb.create_sheet("Reuse")
+    _write_gains_sheet_header(
+        ws, "Reuse: where each development came from and who it serves (demo)",
+        "Came from = user projects (or another development's ID, for lineage) that led to it "
+        "being built. User projects served = user projects that build upon it. Comma-separated.",
+        ["ID", "Development / tool", "Came from (n)", "Came from: user projects",
+         "User projects served (n)", "User projects served: list"],
+    )
+    for row in EXPECTED_GAINS_OVERVIEW:
+        project, came_from_cell, served_cell, use_pattern = row[0], row[8], row[9], row[11]
+        dev_id = EXPECTED_GAINS_IDS[project]
+        is_lineage_only = bool(came_from_cell) and any(
+            t.strip() in EXPECTED_GAINS_IDS.values() for t in came_from_cell.split(","))
+        came_from_n = (None if not came_from_cell else
+                        0 if is_lineage_only else
+                        len([t for t in came_from_cell.split(",") if t.strip()]))
+        if use_pattern == "Constant use" and not came_from_cell:
+            came_from_n = "n/a"
+        served_n = ("Constant use" if use_pattern == "Constant use" else
+                    (len([t for t in served_cell.split(",") if t.strip()]) or None))
+        ws.append([dev_id, project, came_from_n, came_from_cell or None,
+                   served_n, served_cell or None])
+
+    # --- Value --------------------------------------------------------------------------------
+    ws = wb.create_sheet("Value")
+    _write_gains_sheet_header(
+        ws, "Value potential (market equivalents, demo)",
+        "Invented, illustrative prices only -- not real income, never totalled.",
+        ["ID", "Project", "Audience", "Value basis", "Unit price (€)", "Unit"],
+    )
+    for project, audience, basis, price, unit in EXPECTED_GAINS_VALUE:
+        ws.append([EXPECTED_GAINS_IDS[project], project, audience, basis, price, unit or None])
+
+    # --- Notes ----------------------------------------------------------------------------------
+    ws = wb.create_sheet("Notes")
+    for line in EXPECTED_GAINS_NOTES:
+        ws.append([line])
+
+    for name in wb.sheetnames:
+        wb[name].column_dimensions["A"].width = 10
+        wb[name].column_dimensions["B"].width = 26
+        wb[name].column_dimensions["D" if name == "Overview" else "C"].width = 26
+
+    path = DATA_DIR / "SpecialProjects_Tools_expected_gains_v5.xlsx"
+    wb.save(path)
+    print(f"wrote {path} ({len(EXPECTED_GAINS_OVERVIEW)} developments, "
+          f"{len(GAIN_COLUMNS)} gain columns, {len(EXPECTED_GAINS_VALUE)} value rows)")
+
+
 # --- 6) Custom tags (dropdown memory) ------------------------------------------------------
 def build_custom_tags():
     data = {"projects": [], "categories": [], "major_tasks": []}
@@ -576,6 +827,16 @@ def build_empty(year=None):
             p.unlink()
             print(f"removed {p} (the app recreates the JSON ones correctly on first use)")
 
+    # The Gains & Outputs page is read-only and never writes this workbook itself (openpyxl
+    # would destroy hand-built charts/formulas on a real one) -- there's no "empty but present"
+    # shape worth faking, so it's removed rather than written blank. The page shows a friendly
+    # "workbook not found" message until one exists; see HOW_TO_RUN.md for the real shape to
+    # recreate it by hand, or re-run this script without --empty for a fake example of it.
+    gains_path = DATA_DIR / "SpecialProjects_Tools_expected_gains_v5.xlsx"
+    if gains_path.exists():
+        gains_path.unlink()
+        print(f"removed {gains_path} (Gains & Outputs page shows a friendly empty-state message without it)")
+
     print(f"\nDone. Data/ is now a blank {year} starting point -- open the dashboard and use "
           "Add Data to fill it in, or edit the Excel/CSV files directly.")
 
@@ -591,5 +852,6 @@ if __name__ == "__main__":
         build_beyond_projects()
         build_publications()
         build_tools()
+        build_expected_gains()
         build_custom_tags()
         print(f"\nDone. Demo data covers calendar year {YEAR}.")
