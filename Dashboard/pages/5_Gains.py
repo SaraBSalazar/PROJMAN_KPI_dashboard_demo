@@ -5,8 +5,6 @@ live Special Projects and Tools status). Entirely read-only: this page has no ed
 save button, nothing it writes back -- the workbook and the 3-state rule both live in
 kpi_data.py (kd._decide_state)."""
 
-import html as _html
-
 import pandas as pd
 import streamlit as st
 
@@ -47,10 +45,10 @@ page_nav([
     ("Overview", "gains-overview"),
     ("Delivered / in use / potential", "gains-active-potential"),
     ("What delivers what", "gains-matrix"),
-    ("Audience & value", "gains-audience"),
+    ("Audience & outputs", "gains-audience"),
+    ("Value potential", "gains-value"),
     ("Reuse", "gains-reuse"),
-    ("Lineage: evolution", "gains-lineage-tree"),
-    ("Lineage: cards", "gains-lineage-cards"),
+    ("Lineage", "gains-lineage-tree"),
     ("Data health", "gains-health"),
 ])
 st.caption("Read live from Data/SpecialProjects_Tools_expected_gains_v5.xlsx, cross-checked "
@@ -104,7 +102,10 @@ r1[3].metric("Still potential", n_potential)
 r2 = st.columns(4)
 r2[0].metric("Gains with nothing delivered yet", f"{n_untouched} of {n_gain_types}")
 r2[1].metric("Built out of real user projects", n_built_out)
-r2[2].metric("With external users", n_external)
+# Not "with external users" -- the workbook's x marks a development that COULD reach past the
+# institution, which is a potential, not a count of users who already exist out there (same
+# rename as kc._AUDIENCE_FLAG_LABELS applies to the audience chart's own row, so they agree).
+r2[2].metric("With potential external reach", n_external)
 r2[3].metric("With a market equivalent", n_market)
 
 with st.expander(f"ℹ️ How 'Delivered', '{IN_USE_LABEL}' and 'Potential' are decided"):
@@ -117,7 +118,7 @@ with st.expander(f"ℹ️ How 'Delivered', '{IN_USE_LABEL}' and 'Potential' are 
         f"- **{IN_USE_LABEL}** -- not finished, but demonstrably being used already (the "
         "underlying state is still called \"In use\" everywhere in the data -- only this "
         "label spells out that it covers something still being actively built/iterated on "
-        "too, e.g. Pipeline/OMICs Pipelines). Any ONE of these moves it here: it serves a "
+        "too, e.g. OMICs Pipelines). Any ONE of these moves it here: it serves a "
         "real user project (listed under **User projects served** on the Reuse sheet), OR "
         "another development names it as where **it** came from (listed under that other "
         "development's **Came from**, on the Reuse sheet -- having spawned something else is "
@@ -173,44 +174,63 @@ st.plotly_chart(
     width="stretch",
 )
 
-# --- Audience & outputs, alongside the value-potential block ------------------------------
+# --- Audience & outputs -------------------------------------------------------------------
 st.subheader("Audience & outputs", anchor="gains-audience")
-col_a, col_b = st.columns([1.3, 1])
-with col_a:
-    st.plotly_chart(kc.fig_audience_outputs(developments, STATE_COLORS, ADA_COLOR), width="stretch")
-    st.caption("**ADA / Personal** (orange marker) is the innermost tier -- built for ADA or "
-               "personal/internal use (`Output level` = Internal ADA or Internal Worker), inward-facing in a "
-               "way even the **Internal users** row below it isn't: that row and **External "
-               "users** are both about outside *users*, just at different distances, while "
-               "ADA/Personal is about work that never left the building at all.")
-with col_b:
-    st.markdown("**Value potential**")
-    st.caption(
-        "Researched market prices for what an equivalent service would cost elsewhere -- "
-        "shown only to convey *potentiality*, the scale of what these developments stand in "
-        "for. They are not income, and nothing below is ever totalled."
+st.plotly_chart(kc.fig_audience_outputs(developments, STATE_COLORS, ADA_COLOR), width="stretch")
+st.caption("**ADA / Personal** (orange marker) is the innermost tier -- built for ADA or "
+           "personal/internal use (`Output level` = Internal ADA or Internal Worker), "
+           "inward-facing in a way even the **Internal users** row below it isn't: that row "
+           "and **Potential external reach** are both about people outside ADA, just at "
+           "different distances, while ADA/Personal is about work that never left the "
+           "building at all. That last row is a *potential* -- the development could reach "
+           "past the institution -- not a count of external users it already has.")
+
+# --- Value potential: its own full-width section ------------------------------------------
+# Used to sit squeezed into the narrow right column beside the audience chart, under a bare
+# bold line rather than a real heading -- which buried the one place on this page that puts a
+# number on what these developments would cost to buy. It's a section in its own right now:
+# own subheader, own page-nav entry, full page width, and every row visible without scrolling.
+st.subheader("Value potential", anchor="gains-value")
+st.caption(
+    "Researched market prices for what an equivalent service would cost elsewhere -- "
+    "shown only to convey *potentiality*, the scale of what these developments stand in "
+    "for. They are not income, and nothing below is ever totalled."
+)
+if len(value):
+    display = value.copy()
+
+    def _price(row):
+        """Blank rather than an invented number when no price was researched -- the basis
+        text already sits in its own column, so repeating it here would just read as a
+        price that isn't one."""
+        if row["unit_price"] is None:
+            return "—"
+        unit = str(row.get("Unit", "")).strip()
+        unit = "" if unit.lower() in ("", "nan", "none") else f" / {unit}"
+        return f"€{row['unit_price']:,.0f}{unit}"
+
+    display["Price"] = [_price(row) for _, row in display.iterrows()]
+    # The live Delivered/In use/Potential wording, not the raw internal state string -- "In
+    # use" alone is the one state whose label spells out more than its key does (see
+    # kd.GAIN_STATE_LABELS), and this table should read the same as every chart above it.
+    display["Status"] = [kd.GAIN_STATE_LABELS.get(st_, st_) for st_ in display["state"]]
+    st.dataframe(
+        display[["Project", "Audience", "Value basis", "Price", "Status"]],
+        hide_index=True, width="stretch",
+        # Explicit height = header + every row, so a 4-row table never renders inside its own
+        # scrollbox (Streamlit's default caps the body at ~10 rows and scrolls past that --
+        # fine for a long table, needless chrome for this one).
+        height=38 * (len(display) + 1) + 3,
+        column_config={
+            "Project": st.column_config.TextColumn("Development / tool", width="medium"),
+            "Audience": st.column_config.TextColumn("Audience", width="small"),
+            "Value basis": st.column_config.TextColumn("What the price is based on", width="large"),
+            "Price": st.column_config.TextColumn("Market equivalent", width="small"),
+            "Status": st.column_config.TextColumn("Status", width="small"),
+        },
     )
-    if len(value):
-        display = value.copy()
-
-        def _price(row):
-            """Blank rather than an invented number when no price was researched -- the basis
-            text already sits in its own column, so repeating it here would just read as a
-            price that isn't one."""
-            if row["unit_price"] is None:
-                return "—"
-            unit = str(row.get("Unit", "")).strip()
-            unit = "" if unit.lower() in ("", "nan", "none") else f" / {unit}"
-            return f"€{row['unit_price']:,.0f}{unit}"
-
-        display["Price"] = [_price(row) for _, row in display.iterrows()]
-        display["Status"] = display["state"]
-        st.dataframe(
-            display[["Project", "Value basis", "Price", "Status"]],
-            hide_index=True, width="stretch",
-        )
-    else:
-        st.caption("No value rows recorded yet.")
+else:
+    st.caption("No value rows recorded yet.")
 
 # --- Reuse: built out of real user work, and who benefits from it --------------------------
 st.subheader("Reuse: built out of real user work, and who benefits", anchor="gains-reuse")
@@ -226,18 +246,23 @@ if constant_use_names:
                "used daily/by everyone rather than tied to a countable number of projects): "
                + ", ".join(constant_use_names))
 
-# --- Lineage Part A: a TREE of development -> development evolution, and nothing else -------
-# Deliberately split out of the reuse picture above: "built from user work" (14 edges in
-# today's workbook) and "benefits" (0) used to share a chart with "evolved into" (also 0 today),
-# and the handful of "evolved into" edges this chart exists to surface were the least visible
-# thing in it. User-project ids never appear here at all -- that's the whole point of the split
-# -- they live in the Reuse chart above and the development cards below instead.
+# --- Lineage: a TREE of development -> development evolution, and nothing else -------------
+# Deliberately split out of the reuse picture above: "built from user work" (14 edges) and
+# "benefits" (0) used to share a chart with "evolved into" (3), and the handful of "evolved
+# into" edges this chart exists to surface were the least visible thing in it. User-project
+# ids never appear here at all -- that's the whole point of the split; they live in the Reuse
+# chart above, which already says in full which user work fed each development and who
+# benefits from it. (An earlier "development cards" section repeated those same two lists as
+# chips below this chart; it was dropped for exactly that reason -- it added no information
+# the Reuse chart didn't already carry, it just made the page longer.)
 st.subheader("Lineage: development evolution", anchor="gains-lineage-tree")
 st.caption("ONLY development/tool -> development/tool edges -- a Special Project or tool "
-           "literally spawning another, e.g. a tool later folded into a dashboard. No "
-           "user-project id is ever drawn on this chart. Shape is Special Project / Tool / AI "
-           f"Skill; fill is the same Delivered/{IN_USE_LABEL}/Potential colour as every other "
-           "chart on this page; the arrow is the one relationship this chart exists to show.")
+           "literally spawning another, e.g. an AI skill later rebuilt as a full Special "
+           "Project. No user-project id is ever drawn on this chart (that's the Reuse chart "
+           "above). Shape is Special Project / Tool / AI Skill; fill is the same "
+           f"Delivered/{IN_USE_LABEL}/Potential colour as every other chart on this page; a "
+           "hollow node is a parent with no row of its own in the gains workbook yet, so it "
+           "has no state to show (hover any node for its details).")
 n_evolved = int(reuse["came_from_developments"].map(len).sum())
 if not n_evolved:
     st.info("No development has evolved into another yet -- every **Came from** entry on the "
@@ -246,104 +271,9 @@ if not n_evolved:
             "development's **Came from** column there to grow this tree.")
 else:
     st.plotly_chart(kc.fig_lineage_tree(developments, reuse, STATE_COLORS), width="stretch")
-
-# --- Lineage Part B: one card per development, all 4 relationships as chips -----------------
-_CHIP_TEXT_LIMIT = 42  # chars -- past this a chip's own text would stretch the card; show the
-# bare id instead and move the full tracker title into the chip's hover (title attribute) and,
-# so it's never ONLY a hover-only reader's privilege, into a per-card expander too.
-
-
-def _chip(text, muted=False, title_attr=None):
-    cls = "rel-chip rel-chip-muted" if muted else "rel-chip"
-    title = f' title="{_html.escape(title_attr)}"' if title_attr else ""
-    return f'<span class="{cls}"{title}>{_html.escape(text)}</span>'
-
-
-def _name_chip(name):
-    """A development/tool name, already resolved to its live display spelling by
-    kd.load_expected_gains (NAME_ALIASES applied, see kd._lineage_resolve_parent) -- no further
-    lookup needed, unlike a user-project id below."""
-    return _chip(name)
-
-
-def _project_chip(pid, project_lookup, overflow):
-    """A user-project id -- its real tracker title inline when it's short enough to fit
-    (`kd.project_lookup_label` already degrades to the bare id with no match), otherwise just
-    the id, muted-styled when truly unmatched, with the full title available on hover (and
-    appended to `overflow` so the card's own expander can show it too, for a reader who can't
-    hover)."""
-    full_label = kd.project_lookup_label(pid, project_lookup)
-    muted = full_label.strip().upper() == pid.strip().upper()  # no tracker match at all
-    if len(full_label) <= _CHIP_TEXT_LIMIT:
-        return _chip(full_label, muted=muted)
-    overflow.append((pid, full_label))
-    return _chip(pid, muted=muted, title_attr=full_label)
-
-
-def _relationship_row(label, chips):
-    body = " ".join(chips) if chips else '<span class="rel-none">none yet</span>'
-    return f'<div class="rel-row"><span class="rel-label">{label}</span>{body}</div>'
-
-
-def _lineage_card_rows(developments, reuse):
-    """One row per development -- name, state, and the 4 lineage relationship lists, read
-    straight from `reuse` (already alias-resolved -- see kd.load_expected_gains) and joined
-    onto EVERY development in `developments`, not just the ones reuse happens to have
-    populated, so a development with nothing recorded at all still gets a card (4 dashes) --
-    that's the whole point of Part B: the gaps are exactly what's meant to be visible.
-    `_as_id_list` guards every list the same way kc.fig_lineage_tree does -- kd's loader
-    always hands back a real list, so this is unreachable today, but a bare string would
-    otherwise iterate character by character into one chip per LETTER."""
-    reuse_by_id = {row["ID"]: row for _, row in reuse.iterrows()}
-    rows = []
-    for _, dev in developments.iterrows():
-        r = reuse_by_id.get(dev["ID"])
-        evolved_from = kc._as_id_list(r["came_from_developments"]) if r is not None else []
-        fed_by = kc._as_id_list(r["came_from_projects"]) if r is not None else []
-        benefits = kc._as_id_list(r["serves_project_ids"]) if r is not None else []
-        led_to = kc._as_id_list(dev["led_to"])
-        rows.append({
-            "name": dev["Project"], "state": dev["state"],
-            "evolved_from": evolved_from, "fed_by": fed_by, "led_to": led_to, "benefits": benefits,
-            "_total": len(evolved_from) + len(fed_by) + len(led_to) + len(benefits),
-        })
-    return sorted(rows, key=lambda r: (-r["_total"], r["name"]))
-
-
-def render_lineage_card(row, project_lookup, state_colors):
-    color = state_colors.get(row["state"], kd.TL_INK_MUTED)
-    state_label = kd.GAIN_STATE_LABELS.get(row["state"], row["state"])
-    st.markdown(f"#### {row['name']}")
-    st.markdown(
-        f'<p style="margin:-0.5rem 0 0.5rem;">'
-        f'<span style="color:{color}; font-weight:700;">●</span> '
-        f'<span style="color:{color}; font-weight:600;">{state_label}</span></p>',
-        unsafe_allow_html=True,
-    )
-    overflow = []
-    rows_html = "".join([
-        _relationship_row("Evolved from", [_name_chip(n) for n in row["evolved_from"]]),
-        _relationship_row("Fed by", [_project_chip(p, project_lookup, overflow) for p in row["fed_by"]]),
-        _relationship_row("Led to", [_name_chip(n) for n in row["led_to"]]),
-        _relationship_row("Benefits", [_project_chip(p, project_lookup, overflow) for p in row["benefits"]]),
-    ])
-    st.markdown(rows_html, unsafe_allow_html=True)
-    if overflow:
-        with st.expander(f"Full project titles ({len(overflow)})"):
-            for pid, full_label in overflow:
-                st.caption(f"**{pid}** — " + full_label.split("—", 1)[-1].strip())
-
-
-st.subheader("Lineage: development cards", anchor="gains-lineage-cards")
-st.caption("Every development, most-connected first -- evolved from / fed by / led to / "
-           "benefits, each as a chip. A dash means nothing's recorded there yet, which is "
-           "exactly what tells you what to fill in next on the Reuse sheet.")
-card_rows = _lineage_card_rows(developments, reuse)
-card_cols = st.columns(2)
-for i, row in enumerate(card_rows):
-    with card_cols[i % 2]:
-        with st.container(border=True):
-            render_lineage_card(row, project_lookup, STATE_COLORS)
+    st.caption("A development can be expected to spawn more than one tool -- each new one "
+               "joins this chart on its own the moment it gets a row in the gains workbook "
+               "naming its parent under the **Came from** column.")
 
 # --- Data health: only worth a section if there's actually something to flag ---------------
 if unmatched_tools or unmatched_projects or unmatched_reuse_ids or ungrouped_gains or notes:

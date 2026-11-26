@@ -1133,24 +1133,27 @@ _GAINS_HEADER_ROW = 3
 # at load time falls back to GAIN_FALLBACK_GROUP (and is surfaced in the page's Data health
 # section) rather than crashing or silently mis-grouping.
 #
-# "Training & capability building" used to be one conflated column; Sara wants it split into
-# two real gains -- Training (outreach: reaching new people) and User capacitation (teaching
-# existing users to be more self-sufficient) -- see HOW_TO_RUN.md for exactly what to add to
-# the workbook. Both new names are listed below under the groups she asked for, and the old
-# combined name is KEPT mapped to Capability so nothing breaks before/during her edit: today's
-# workbook still only has the old column, and this dict has to recognize it regardless of
-# which column(s) actually exist on any given load.
+# "Training & capability building" used to be one conflated column. It was narrowed to
+# "User capacitation" (giving users a tool that lets them work independently) rather than
+# split in two -- teaching/catalogue work is already carried by "Cataloguing & outreach" and
+# "New users / projects reached". The old combined name is KEPT mapped to Capability so an
+# older copy of the workbook still groups correctly, and a separate "Training" (outreach that
+# reaches NEW people) is recognized ahead of time should one ever be added as its own column.
 GAIN_GROUPS = {
     "Faster project completion": "Efficiency",
     "Internal management": "Efficiency",
-    "Training & capability building": "Capability",  # pre-split column; kept for compatibility
-    "User capacitation": "Capability",                # post-split: teaching existing users
+    "Training & capability building": "Capability",  # the column's old name; kept so an
+    # older copy of the workbook still groups correctly.
+    "User capacitation": "Capability",   # the live column: handing users a tool/dashboard that
+    # lets them work independently -- deliberately narrower than the old name it replaces.
     "AI skills (Bigorna Project)": "Capability",
     "Pioneering development": "Innovation & visibility",
     "Flagship project": "Innovation & visibility",
     "Scientific publication": "Innovation & visibility",
     "New users / projects reached": "Reach & relationships",
-    "Training": "Reach & relationships",              # post-split: outreach, reaching new people
+    "Training": "Reach & relationships",   # not a column on today's Gains sheet -- recognized
+    # ahead of time so adding one (teaching/outreach that reaches NEW people, as opposed to
+    # "User capacitation" above) groups correctly the moment it appears, with no code change.
     "Cataloguing & outreach": "Reach & relationships",
     "Collaboration with other facilities": "Reach & relationships",
 }
@@ -1490,14 +1493,23 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
     reuse["came_from_developments"] = came_from_developments_col
     # Trust the parsed ids over the "(n)" column's cached Excel-formula value whenever ids
     # were actually listed (see module docstring note on load_expected_gains) -- only fall
-    # back to the typed number for the handful of rows that have a count with no ids (today:
-    # OmicsXplorer, Curated MS-omics tools, omics-inputs-agent). Crucially this counts
-    # came_from_PROJECTS only -- a lineage parent added to the same cell (came_from_developments)
-    # must never inflate this number.
-    reuse["came_from_n"] = pd.array(
-        [len(projs) if projs else typed for projs, (typed, _) in zip(came_from_projects_col, came_from_counted)],
-        dtype="Int64",
-    )
+    # back to the typed number for rows that have a count with no ids at all. Crucially this
+    # counts came_from_PROJECTS only -- a lineage parent named in the same cell
+    # (came_from_developments) must never inflate this number, and a row whose "Came from"
+    # cell holds ONLY a lineage parent must stay BLANK here rather than falling through to the
+    # typed count: the sheet's own "(n)" formula is a plain comma count, so it says 1 for that
+    # row, which would wrongly book the development as "built out of real user projects" on
+    # the Gains page's headline metric. Hence the three-way split -- ids listed / cell empty /
+    # cell holds lineage only -- instead of a plain `projs or typed`.
+    came_from_n_col = []
+    for projs, tokens, (typed, _) in zip(came_from_projects_col, reuse["came_from_ids"], came_from_counted):
+        if projs:
+            came_from_n_col.append(len(projs))
+        elif tokens:
+            came_from_n_col.append(None)  # lineage parent(s) only -- no user project behind it
+        else:
+            came_from_n_col.append(typed)
+    reuse["came_from_n"] = pd.array(came_from_n_col, dtype="Int64")
 
     served_project_ids_by_id = dict(zip(reuse["ID"], reuse["serves_project_ids"]))
     is_parent_by_id = {
@@ -1524,8 +1536,8 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
 
     # The gain columns are whatever actually sits between "Project" and "Gain types (n)" on
     # this sheet -- never assumed to be a fixed set of 10, so the Gains sheet can gain (or, in
-    # principle, lose) a column -- e.g. Sara splitting "Training & capability building" into
-    # "Training" + "User capacitation" -- without any code change. Falls back to whichever of
+    # principle, lose) a column -- e.g. adding a "Training" gain alongside "User capacitation"
+    # -- without any code change. Falls back to whichever of
     # GAIN_GROUPS' historically-known names are actually present if the sheet's own "Project"/
     # "Gain types (n)" boundary headers are ever renamed or missing, rather than raising.
     _cols = list(gains_raw.columns)

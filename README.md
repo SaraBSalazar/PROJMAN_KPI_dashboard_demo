@@ -144,9 +144,9 @@ together instead of being scattered through one flat list.
   **Potential** — and that is read off the live data rather than taken on trust, so marking
   a special project finished (or a tool deprecated) moves its gains here by itself. Holds
   the gains split by state and banded by theme, a developments × gains matrix, audience and
-  outputs, reuse drawn in both directions (what a development was built out of, and what
-  benefits from it), a lineage tree of which developments grew out of which, and a card per
-  development. Read-only.
+  outputs, a value-potential table of researched market-equivalent prices, reuse drawn in both
+  directions (what a development was built out of, and what benefits from it), and a lineage
+  tree of which developments grew out of which. Read-only.
 
 **Data**
 

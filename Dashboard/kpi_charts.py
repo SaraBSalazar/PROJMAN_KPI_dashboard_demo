@@ -1828,8 +1828,19 @@ def _potential_hatch():
     being drawn in almost exactly the fill's own colour. fgcolor is TL_INK_PRIMARY instead of
     any of the muted inks -- the strongest ink/background contrast this theme has, verified
     >=4.5:1 against the Potential fill in BOTH modes (not just "different enough on paper" --
-    rendered and inspected at 1:1 pixels in both themes)."""
-    return dict(shape="/", fgcolor=TL_INK_PRIMARY, solidity=0.35, size=7)
+    rendered and inspected at 1:1 pixels in both themes).
+
+    Weight is tuned separately from colour: the hatch only has to say "not banked yet" at a
+    glance, and at solidity 0.35 / size 7 the strokes inked ~30% of every Potential bar, which
+    made the one state that hasn't delivered anything yet the LOUDEST thing on a page whose
+    whole point is what's already delivered. Thinner strokes spaced further apart (0.14 / 10)
+    halve that to ~13% (measured off the rendered PNG in both themes, not estimated) while
+    keeping fgcolor at full opacity -- deliberately NOT the obvious alternative of fading the
+    strokes with `fgopacity`, which would have dropped the stroke/fill contrast to ~2.2:1,
+    below the 3:1 non-text minimum, and undone the whole point of the paragraph above. Same
+    colour, same legibility for anyone reading the pattern rather than the fill; just less of
+    it, so the visual weight goes back to Delivered / In use."""
+    return dict(shape="/", fgcolor=TL_INK_PRIMARY, solidity=0.14, size=10)
 
 
 _SOLID_HATCH = dict(shape="")
@@ -2091,6 +2102,15 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
 
 _ADA_OUTPUT_LEVELS = {"Internal ADA", "Internal Worker"}
 
+# Display-only renames for the audience flag rows -- the gains workbook's own column headers
+# stay exactly as they are (they're what kd reads by name), this just changes what a reader
+# sees. "External users" was being read as a count of users who already exist outside the
+# institution; what the x actually records is that the development COULD reach beyond it,
+# which is a potential, not a headcount -- so the row says so in words.
+_AUDIENCE_FLAG_LABELS = {
+    "External users": "Potential external reach",
+}
+
 
 def fig_audience_outputs(developments, state_colors, ada_color):
     """The 5 boolean audience/output flags (Internal users, External users, Facility use /
@@ -2132,7 +2152,7 @@ def fig_audience_outputs(developments, state_colors, ada_color):
     ada_mask = developments["Output level"].isin(_ADA_OUTPUT_LEVELS)
     rows = [_row("ADA / Personal", developments[ada_mask])]
     for col in flag_cols:
-        rows.append(_row(col, developments[developments[col]]))
+        rows.append(_row(_AUDIENCE_FLAG_LABELS.get(col, col), developments[developments[col]]))
     ada_row, rest = rows[:1], rows[1:]
     rest.sort(key=lambda r: r["n_total"], reverse=True)
     df = pd.DataFrame(ada_row + rest).reset_index(drop=True)
@@ -2310,9 +2330,8 @@ def fig_reuse_both_directions(reuse, state_colors, project_lookup=None):
 # --- Lineage tree (development -> development evolution only; see fig_lineage_tree) -----------
 # Single flat edge colour -- fig_lineage_tree draws exactly one relationship ("evolved into"),
 # unlike the old combined fig_lineage it replaces (which needed 3: "built from user work" and
-# "benefits" now live only in fig_reuse_both_directions / the page's development cards, never
-# here -- the whole point of the split is that nothing else competes with this one relationship
-# on this chart). Same palette slot as the old chart's "evolved into" line (TL_PALETTE[6], its
+# "benefits" now live only in fig_reuse_both_directions, never here -- the whole point of the
+# split is that nothing else competes with this one relationship on this chart). Same palette slot as the old chart's "evolved into" line (TL_PALETTE[6], its
 # most saturated of the three -- GAIN_GROUP_COLORS and ADA_PERSONAL_COLOR don't touch it).
 _LINEAGE_EVOLVED_EDGE_COLOR = TL_PALETTE[6]
 _LINEAGE_EVOLVED_EDGE_COLOR_DARK = TL_PALETTE_DARK[6]
@@ -2387,12 +2406,11 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
     user-project id anywhere on this chart. Replaces the old combined fig_lineage, which drew
     "built from user work" (14 edges in today's workbook) and "benefits" (0) in the same
     picture as "evolved into" (also 0, but the one relationship this chart exists to surface):
-    the 14 reuse edges visually swamped the handful of lineage ones, and the column layout was
+    the 14 reuse edges visually swamped the 3 lineage ones, and the column layout was
     role-based, so the same KIND of entity (a Special Project, say) split across two columns
     purely depending on whether it happened to have a parent. Splitting it out means every
     node and edge here is part of an evolution chain, full stop -- "built from"/"benefits" now
-    live only in fig_reuse_both_directions and the page's per-development cards (see
-    pages/5_Gains.py).
+    live only in fig_reuse_both_directions (see pages/5_Gains.py).
 
     Columns = lineage DEPTH, not role: depth 0 is a development/tool with no development
     parent of its own (via `came_from_developments`); depth N is 1 + max(depth(parents)) --
@@ -2405,10 +2423,13 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
     page:
       - SHAPE = kind (circle Special Project / diamond Tool-AI-Skill) -- _LINEAGE_KIND_SYMBOLS.
       - FILL = state (`state_colors`, the page's theme-matched kd.GAIN_STATE_COLORS / _DARK
-        dict) for a tracked development; a flat neutral (TL_BASELINE) for an "untracked"
-        lineage parent (a real tool/Special Project named under some development's Came from
-        that has no row of its own in this workbook, e.g. "motif-scan-from-github" -- see
-        _lineage_resolve_parent), which has no Delivered/In use/Potential state to show.
+        dict) for a tracked development; HOLLOW (surface fill, neutral outline) for an
+        "untracked" lineage parent (a real tool/Special Project named under some development's
+        Came from that has no row of its own in this workbook, e.g. "motif-scan-from-github"
+        -- see _lineage_resolve_parent), which has no Delivered/In use/Potential state to show.
+        Hollow rather than grey-filled on purpose -- see the marker trace below.
+    Both encodings are spelled out in the legend, in two titled groups ("Shape = kind" /
+    "Fill = state"), with only the states actually present in the tree listed.
     There's only one relationship left to draw (no edge-colour legend needed): a single flat
     "evolved into" colour (_LINEAGE_EVOLVED_EDGE_COLOR), drawn as a real annotation ARROW (not
     a plain Scatter line) so direction always reads unambiguously -- both ends held back from
@@ -2419,9 +2440,8 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
     immediately beside it, at the identical height, by design (see LABEL_XSHIFT below).
 
     Only developments/tools that participate in at least one "evolved into" edge are drawn --
-    with nothing recorded (today's workbook: 0 edges, every one of the 16 developments) this
-    returns a deliberate empty-state figure (see _empty) instead of 16 floating, disconnected
-    dots. The page prefers to skip calling this entirely in that case and show a richer
+    with nothing recorded at all this returns a deliberate empty-state figure (see _empty)
+    instead of 16 floating, disconnected dots. The page prefers to skip calling this entirely in that case and show a richer
     markdown explainer instead (see pages/5_Gains.py's own n_evolved check), but this function
     stays safe to call directly either way -- tests, or a future caller.
 
@@ -2586,15 +2606,22 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
             continue
         xs = [depth_memo[node_id] for node_id, _ in entries]
         ys = [y_pos[node_id] for node_id, _ in entries]
-        colors = [
-            state_colors[node_kind_state(node_id)[1]] if node_kind_state(node_id)[1] else TL_BASELINE
-            for node_id, _ in entries
-        ]
+        # An untracked parent draws HOLLOW (surface fill, neutral outline), not as a grey
+        # disc. A flat grey fill was the obvious choice and the wrong one: the Potential state
+        # is itself a grey (kd.GAIN_STATE_COLORS), so side by side -- which is exactly how
+        # this chart arranges them, parent beside child -- "no state recorded here" and "state:
+        # Potential" were two barely-distinguishable greys meaning completely different things.
+        # Empty vs filled can't be confused with any state colour, and it reads the right way
+        # round on its own: nothing filled in because there's nothing filled in yet.
+        states = [node_kind_state(node_id)[1] for node_id, _ in entries]
+        colors = [state_colors[st] if st else TL_SURFACE for st in states]
+        line_colors = [TL_SURFACE if st else TL_BASELINE for st in states]
+        line_widths = [1.5 if st else 2 for st in states]
         hovers = [h for _, h in entries]
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="markers", name=kind, showlegend=False,
             marker=dict(symbol=_LINEAGE_KIND_SYMBOLS[kind], size=16, color=colors,
-                        line=dict(color=TL_SURFACE, width=1.5)),
+                        line=dict(color=line_colors, width=line_widths)),
             hovertext=hovers, hoverinfo="text",
         ))
         for (node_id, _), x, y in zip(entries, xs, ys):
@@ -2605,16 +2632,40 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
                 font=dict(size=10, color=TL_INK_SECONDARY),
             )
 
-    # Dummy legend-only entries for shape/kind -- the real node traces above are showlegend=
-    # False because their marker colour varies per point (state or neutral), which Plotly's
-    # legend swatch doesn't reliably reflect; a single-point proxy trace per kind, drawn in a
-    # fixed neutral colour at (None, None) (truly empty x=[]/y=[] renders NO legend entry at
-    # all, verified against this exact Plotly/kaleido version), is the robust way to explain
-    # shape regardless of that.
+    # Dummy legend-only entries -- the real node traces above are showlegend=False because
+    # their marker colour varies per point (state or hollow), which Plotly's legend swatch
+    # doesn't reliably reflect; a single-point proxy trace at (None, None) (truly empty
+    # x=[]/y=[] renders NO legend entry at all, verified against this exact Plotly/kaleido
+    # version) is the robust way to explain an encoding regardless of that.
+    #
+    # BOTH encodings get a legend, in two titled groups: shape (kind) and fill (state). The
+    # fill half used to be missing entirely, left to the page caption to explain in words --
+    # which made this the only chart on the page using the Delivered/In use/Potential palette
+    # without saying so on the chart itself, and the only way to tell a hollow node from a
+    # filled one was to already know. Only the states actually PRESENT in this tree are
+    # listed, so the legend never advertises a colour that isn't on screen.
     for kind, symbol in _LINEAGE_KIND_SYMBOLS.items():
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers", name=kind, showlegend=True,
+            legendgroup="kind", legendgrouptitle_text="Shape = kind",
             marker=dict(symbol=symbol, size=11, color=TL_INK_SECONDARY),
+        ))
+    states_present = {node_kind_state(node_id)[1] for node_id in all_node_ids}
+    for state in STATE_ORDER:
+        if state not in states_present:
+            continue
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers", name=GAIN_STATE_LABELS.get(state, state),
+            showlegend=True, legendgroup="state", legendgrouptitle_text="Fill = state",
+            marker=dict(symbol="circle", size=11, color=state_colors[state],
+                        line=dict(color=TL_SURFACE, width=1.5)),
+        ))
+    if None in states_present:
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers", name="Not tracked here",
+            showlegend=True, legendgroup="state", legendgrouptitle_text="Fill = state",
+            marker=dict(symbol="circle", size=11, color=TL_SURFACE,
+                        line=dict(color=TL_BASELINE, width=2)),
         ))
 
     tick_positions = list(range(max_depth + 1))
@@ -2624,11 +2675,21 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None):
         showgrid=True, gridcolor=TL_GRID, zeroline=False,
         tickfont=dict(size=11, color=TL_INK_SECONDARY),
     )
-    fig.update_yaxes(visible=False, range=[-1, max_rows + 1])
+    # Nodes occupy y 0 .. max_rows-1 (see the spreading pass above), so the padding is half a
+    # row on each side -- enough to keep a 2-3 line wrapped label off the plot edge, without
+    # the extra blank row top and bottom that `[-1, max_rows + 1]` used to leave: with only 3
+    # chains in the tree that was a third of the plot height sitting empty above the first row.
+    fig.update_yaxes(visible=False, range=[-0.6, max_rows - 0.4])
     fig.update_layout(
         **base_layout("Lineage: development evolution",
                       width=max(700, round(260 * (max_depth + 1.8))),
-                      height=max(360, 110 + 60 * max_rows)),
+                      # +170px of fixed overhead on top of the rows themselves: the title band
+                      # and, below the plot, a legend that is now 2 titled groups stacked as
+                      # columns (see the proxy traces above) rather than 2 flat swatches. Sized
+                      # for it explicitly -- a legend that tall otherwise eats into the plot
+                      # area instead of sitting under it, squashing a 3-row tree to half the
+                      # figure.
+                      height=max(440, 170 + 70 * max_rows)),
         margin=dict(l=20, r=70, t=70, b=70),
         # Bottom, not top -- a top legend collides with the title text at the left (both
         # compete for the same narrow top band); the bottom has nothing else in it.
