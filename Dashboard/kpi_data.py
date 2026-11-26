@@ -2345,19 +2345,32 @@ def project_hours_with_source(projects, df_period=None):
     (clipped at 0: a just-registered project can show a stale negative/blank value before
     Timesheet settles) for a project the time log doesn't cover, e.g. one from a period that
     predates the time log entirely. Shared by the 'Hours by project' chart and the 'year at
-    a glance' cards so both report the same total."""
+    a glance' cards so both report the same total.
+
+    Only tags the PROJECT TRACKER has registered count. The time log's Project column is not
+    a list of projects -- it is where every hour goes, projects and non-projects alike (org
+    and admin time, consulting, training, seminars, personal-organisation work), plus the
+    occasional mistagged entry that was never registered anywhere. Those are real work and
+    they belong in the Week/Month/Year hour views; they are not projects, and a bar for one
+    of them sitting in "Hours by project" said they were. This is the same rule "Projects
+    touched" and "Active/concluded" already use -- deliberately the rule rather than a list
+    of bucket names to exclude, which is what the previous hardcoded trio had become: it went
+    stale the moment a new bucket was added, and silently let it through."""
+    registered = {str(t).strip() for t in projects["Project tag"] if str(t).strip()}
     timesheet_hours = pd.to_numeric(projects.get("Hours in Timesheet"), errors="coerce").fillna(0).clip(lower=0)
-    timesheet_hours.index = projects["Project tag"]
+    timesheet_hours.index = [str(t).strip() for t in projects["Project tag"]]
 
     timelog_hours = pd.Series(dtype=float)
     if df_period is not None and len(df_period):
+        logged = df_period.copy()
+        logged["Project"] = logged["Project"].astype(str).str.strip()
         timelog_hours = (
-            df_period[~df_period["Project"].isin(["Org & Admin", "Trainning", "Seminário"])]
+            logged[logged["Project"].isin(registered)]
             .groupby("Project")["Hours (exact)"].sum()
         )
 
     hours, source = {}, {}
-    for tag in sorted(set(timesheet_hours.index) | set(timelog_hours.index)):
+    for tag in sorted(registered):
         tl = timelog_hours.get(tag, 0.0)
         if tl > 0:
             hours[tag], source[tag] = tl, "time log"

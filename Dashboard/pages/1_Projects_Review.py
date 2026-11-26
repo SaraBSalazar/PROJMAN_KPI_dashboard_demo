@@ -343,7 +343,11 @@ if paused_rows:
 
 st.divider()
 anchor("hours-by-project")
-st.caption("Hours use the personal time log when a project has entries there, falling back to Timesheet otherwise (hover a bar to see which).")
+st.caption("Only projects the tracker has registered — the time log's other buckets "
+           "(org and admin time, consulting, training, seminars) are real work but not "
+           "projects, and they're counted in the Week/Month/Year views instead. Hours use "
+           "the personal time log when a project has entries there, falling back to "
+           "Timesheet otherwise (hover a bar to see which).")
 st.plotly_chart(kc.fig_hours_by_project(projects, df_period_for_hours), width="stretch")
 
 if not READONLY:
