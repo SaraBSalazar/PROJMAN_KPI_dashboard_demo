@@ -16,15 +16,22 @@ Stop it with `Ctrl+C` in the terminal.
 but its own Week/Month/Year content lives in `pages/0_Overview.py` so the sidebar can group
 pages under section headings instead of listing them flat:
 
-- **Reporting** — 📊 Overview (`pages/0_Overview.py`, the default page) and
-  🗂️ Projects Review (`pages/1_Projects_Review.py`)
+- **Reporting** — Overview (`pages/0_Overview.py`, the default page),
+  Projects Review (`pages/1_Projects_Review.py`) and Publications & Courses
+  (`pages/6_Publications_Courses.py` — papers, courses taken and taught, conference
+  contributions, juries and outreach, logged per reporting period and tagged with the
+  projects behind them)
 - **Development** — 🎯 Special Projects (`pages/2_Special_Projects.py`),
   🛠️ Tools & AI Skills (`pages/3_Tools.py`), and 💡 Gains & Outputs
   (`pages/5_Gains.py` — what the special projects and tools are expected to
   deliver, and how much of that is **Delivered** (finished, gains banked), **In use &
   developing** (not finished, but already serving a real user project, or having spawned
   another development, or a tool that isn't deprecated), or still **Potential**)
-- **Data** — ➕ Add Data (`pages/4_Add_Data.py`)
+- **Data** — Add Data (`pages/4_Add_Data.py`)
+
+Sidebar icons are Material Symbols (`":material/name:"`), which stay monochrome and take the
+theme's ink colour; the browser-tab icon each page sets in its own `st.set_page_config` stays
+an emoji, where a flat glyph is what's legible at 16px.
 
 Because `st.navigation` is used, Streamlit's older "every file in `pages/` becomes a page"
 discovery is switched off — a page appears in the sidebar only if it is listed in the
@@ -240,7 +247,8 @@ want (weekly, daily, ...). A few things worth knowing:
 | Special Projects → "✏️ Edit this project" (incl. renaming, ✅ finished)        | `Data/Special_Projects_Ratings.xlsx` (a rename also moves that project's task checklist, so its tasks follow it)     |
 | Special Projects → per-project task checklist (incl. planned dates) | `Data/special_project_tasks.json` (source of truth, mirrored to `Data/Special_Projects_Tasks.xlsx` on every edit)  |
 | Projects Review → "Beyond projects" cards                           | `Data/beyond_projects.json` (source of truth, mirrored to `Data/Beyond_Projects.xlsx` on every save)               |
-| Projects Review → "Publications" (under Beyond projects)             | `Data/publications.json` (source of truth, mirrored to `Data/Publications.xlsx` on every save)                     |
+| Publications & Courses → "Publications"                              | `Data/publications.json` (source of truth, mirrored to `Data/Publications.xlsx` on every save). This section used to sit on Projects Review, which no longer carries it. |
+| Publications & Courses → courses, teaching & juries, conferences, outreach | `Data/cv_outputs.json` (source of truth, mirrored to `Data/CV_Outputs.xlsx` on every save) — one record per output, with a *kind* that groups it |
 | Week tab → "➕ New tag" (project / category / major task)           | `Data/custom_tags.json` (so new tags stay in the dropdowns across restarts, even before they're used in a saved row) |
 | Tools & AI Skills → "Edit a tool" and the "All tools" table         | `Data/tools.xlsx`                                                                                                    |
 | Projects Review → Turnaround → "⏸ Pauses" note / forgive checkbox  | `Data/project_pause_notes.json` (forgiving a pause subtracts just its days from that project's turnaround figures, rather than excluding the whole project) |
@@ -250,7 +258,8 @@ want (weekly, daily, ...). A few things worth knowing:
 Everything in the table above writes to disk immediately when you click its Save/Add
 button — nothing is held only in the browser session, and everything you can change ends up
 in an Excel file (the JSON files are the dashboard's working copy and are mirrored to
-`Special_Projects_Tasks.xlsx`, `Beyond_Projects.xlsx`, and `Publications.xlsx`). The one exception is
+`Special_Projects_Tasks.xlsx`, `Beyond_Projects.xlsx`, `Publications.xlsx`, and
+`CV_Outputs.xlsx`). The one exception is
 `custom_tags.json`, which just remembers dropdown options until you use them in a row — once
 used, the tag lives in `track_time.csv` like any other value.
 

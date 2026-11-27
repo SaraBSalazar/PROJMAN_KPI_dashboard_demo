@@ -163,3 +163,21 @@ def _meeting_field_options(col, _periods, mtime_key):
 
 def meeting_field_options(periods, col):
     return _meeting_field_options(col, periods, _period_files_key())
+
+
+@st.cache_data(show_spinner=False)
+def _load_cv_outputs(mtime_key):
+    return kd.load_cv_outputs()
+
+
+def load_cv_outputs():
+    return _load_cv_outputs(_mtime(kd.CV_OUTPUTS_PATH))
+
+
+@st.cache_data(show_spinner=False)
+def _load_publications(mtime_key):
+    return kd.load_publications()
+
+
+def load_publications():
+    return _load_publications(_mtime(kd.PUBLICATIONS_PATH))

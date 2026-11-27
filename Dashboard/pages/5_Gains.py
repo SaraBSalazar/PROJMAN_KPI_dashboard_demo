@@ -286,7 +286,7 @@ if constant_use_names:
                "used daily/by everyone rather than tied to a countable number of projects): "
                + ", ".join(constant_use_names))
 
-# --- Lineage: a TREE of development -> development evolution, and nothing else -------------
+# --- Lineage: a TREE of development -> development lineage, and nothing else ---------------
 # Deliberately split out of the reuse picture above: "built from user work" (14 edges) and
 # "benefits" (0) used to share a chart with "evolved into" (3), and the handful of "evolved
 # into" edges this chart exists to surface were the least visible thing in it. User-project
@@ -304,6 +304,12 @@ st.caption("ONLY development/tool -> development/tool edges -- a Special Project
            "hollow node has no state to show -- it's either deprecated (the usual, healthy "
            "end for a parent its child took over -- the Tools page holds the reason) or just "
            "not tracked in the gains workbook. Hover any node to see which.")
+st.caption("The **arrow** says how the child came about. A violet solid arrow is an "
+           "**evolution** -- the parent became the child and is usually retired afterwards "
+           "(notion-to-elab → Project Closer). A sienna open arrow is an **output** -- the "
+           "parent produced it and carries on itself (OMICs Pipelines → Metabolomics "
+           "Facility Dashboard). Set it on the development's own card, under "
+           "**🔗 Reuse & lineage**.")
 n_evolved = int(reuse["came_from_developments"].map(len).sum())
 if not n_evolved:
     st.info("No development has evolved into another yet -- every **Came from** entry on the "

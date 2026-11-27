@@ -29,6 +29,7 @@ PAGES = [
     "pages/3_Tools.py",
     "pages/4_Add_Data.py",
     "pages/5_Gains.py",
+    "pages/6_Publications_Courses.py",
 ]
 
 
@@ -49,7 +50,12 @@ def main():
     from streamlit.testing.v1 import AppTest
     failed = []
     for page in PAGES:
-        at = AppTest.from_file(page)
+        # Every page is reached THROUGH the router, not opened on its own: st.page_link only
+        # resolves pages that st.navigation has declared, so a page holding a cross-link to
+        # another one fails standalone while working perfectly in the real app.
+        at = AppTest.from_file(MAIN_PAGE)
+        if page != MAIN_PAGE:
+            at.switch_page(page)
         at.run(timeout=30)
         if at.exception:
             failed.append(page)

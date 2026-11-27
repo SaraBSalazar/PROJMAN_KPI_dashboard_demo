@@ -54,7 +54,6 @@ page_nav([
     ("Complexity", "project-complexity"), ("Definition", "project-definition"),
     ("Who we work with", "who-we-work-with"), ("Impact", "non-quantifiable-outputs"),
     ("Consulting", "consulting"), ("Beyond projects", "beyond-projects"),
-    ("Publications", "publications"),
 ])
 
 st.subheader(f"Year at a glance — {period_label}", anchor="year-at-a-glance")
@@ -407,9 +406,11 @@ st.plotly_chart(kc.fig_consulting_overview(meetings), width="stretch")
 
 st.divider()
 st.subheader(f"Beyond projects — {period_label}", anchor="beyond-projects")
-st.caption("Free-form cards for work the project tracker has no column for (teaching, outreach, "
-           "courses, internal tools, ...). Saved to beyond_projects.json and mirrored to "
-           f"{kd.BEYOND_XLSX_PATH.name}.")
+st.caption("Free-form cards for work the project tracker has no column for. Saved to "
+           f"beyond_projects.json and mirrored to {kd.BEYOND_XLSX_PATH.name}. A course, poster, "
+           "jury or paper is better logged on the Publications & Courses page, where it counts "
+           "and can be carried into a CV; these cards are for the shape of thing that fits "
+           "nowhere else.")
 
 if st.session_state.pop("beyond_save_warning", None):
     st.warning(f"Saved, but couldn't update {kd.BEYOND_XLSX_PATH.name} — close it in Excel to "
@@ -457,69 +458,4 @@ for i, card in enumerate(beyond_cards):
 if not READONLY and st.button("➕ Add card", key=f"beyond_add_{period_label}"):
     beyond_cards.append(kd.new_beyond_card())
     _save_beyond(all_beyond)
-    st.rerun()
-
-st.subheader(f"Publications — {period_label}", anchor="publications")
-st.caption("Papers and preprints this period's work fed into, tagged with the project(s) "
-           f"they relate to. Saved to publications.json and mirrored to {kd.PUBLICATIONS_XLSX_PATH.name}.")
-
-if st.session_state.pop("pub_save_warning", None):
-    st.warning(f"Saved, but couldn't update {kd.PUBLICATIONS_XLSX_PATH.name} — close it in Excel "
-               "to refresh the mirror on the next edit.", icon="⚠️")
-
-all_pubs = kd.load_publications()
-pub_entries = all_pubs.setdefault(period_label, [])
-
-
-def _save_pubs(all_entries):
-    warning = kd.save_publications(all_entries)
-    if warning:
-        st.session_state["pub_save_warning"] = warning
-
-
-if not pub_entries:
-    st.caption("No publications logged for this period yet.")
-
-for i, pub in enumerate(pub_entries):
-    with st.container(border=True):
-        tags = [t.strip() for t in str(pub.get("projects", "")).split(",") if t.strip()]
-        tag_html = "".join(
-            f"<span style='background:#2A9D8F22; color:#2A9D8F; border-radius:10px; "
-            f"padding:1px 9px; margin-right:5px; font-size:0.82em; font-weight:600;'>{t}</span>"
-            for t in tags
-        )
-        title_html = (f"<a href='{pub['url']}' target='_blank'>{pub['title'] or '(untitled)'}</a>"
-                      if pub.get("url") else (pub["title"] or "(untitled)"))
-        meta_bits = [b for b in (pub.get("venue"), pub.get("date")) if b]
-        st.markdown(
-            f"<b>{title_html}</b><br>"
-            f"<span style='opacity:0.85'>{' · '.join(meta_bits)}</span><br>"
-            f"<div style='margin-top:4px'>{tag_html}</div>",
-            unsafe_allow_html=True,
-        )
-        if not READONLY:
-            with st.expander("✏️ Edit"):
-                with st.form(f"pub_form_{period_label}_{i}"):
-                    title = st.text_input("Title", value=pub["title"], key=f"pub_title_{period_label}_{i}")
-                    venue = st.text_input("Venue (e.g. bioRxiv preprint, journal name)",
-                                           value=pub["venue"], key=f"pub_venue_{period_label}_{i}")
-                    date = st.text_input("Date", value=pub["date"], key=f"pub_date_{period_label}_{i}")
-                    url = st.text_input("Link (DOI or URL)", value=pub["url"], key=f"pub_url_{period_label}_{i}")
-                    projects = st.text_input("Related project tags (comma-separated)",
-                                              value=pub["projects"], key=f"pub_projects_{period_label}_{i}")
-                    p_save, p_del = st.columns(2)
-                    saved = p_save.form_submit_button("💾 Save")
-                    removed = p_del.form_submit_button("🗑️ Remove")
-                if saved:
-                    pub.update(title=title, venue=venue, date=date, url=url, projects=projects)
-                    _save_pubs(all_pubs)
-                    st.rerun()
-                if removed:
-                    pub_entries.pop(i)
-                    _save_pubs(all_pubs)
-                    st.rerun()
-
-if not READONLY and st.button("➕ Add publication", key=f"pub_add_{period_label}"):
-    pub_entries.append(kd.new_publication())
-    _save_pubs(all_pubs)
     st.rerun()

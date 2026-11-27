@@ -131,6 +131,12 @@ together instead of being scattered through one flat list.
   project, complexity, project definition, who-we-work-with, consulting, non-quantifiable
   outputs, and "beyond projects" cards. Driven purely by the project tracker, so it works
   for a period that predates the time log.
+- **Publications & Courses** — the outputs a project tracker has no column for: papers and
+  preprints, courses taken and taught, conference posters and talks, thesis juries,
+  outreach. Each is a record with a *kind* and a date, logged against a reporting period and
+  optionally against the project tags it came out of, so one entry counts for the reporting
+  year and is ready to carry into a CV or an annual report — rather than living as
+  free-form text in a card that can't be counted.
 
 **Development**
 
@@ -146,7 +152,9 @@ together instead of being scattered through one flat list.
   the gains split by state and banded by theme, a developments × gains matrix, audience and
   outputs, a value-potential table of researched market-equivalent prices, reuse drawn in both
   directions (what a development was built out of, and what benefits from it), and a lineage
-  tree of which developments grew out of which. Read-only.
+  tree of which developments grew out of which. A lineage edge also says *how* the child came
+  about: **evolved into** (the parent became it and is usually retired) or **output of** (the
+  parent produced it and carries on), drawn as two different arrows. Read-only.
 
 **Data**
 
@@ -173,6 +181,7 @@ tied to its own institution's fiscal calendar — see the note below.)
 | `Data/special_project_tasks.json` | Per-project task checklists (source of truth), mirrored to `Special_Projects_Tasks.xlsx` on every edit. |
 | `Data/beyond_projects.json` | "Beyond projects" cards (source of truth), mirrored to `Beyond_Projects.xlsx` on every save. |
 | `Data/publications.json` | Publications/preprints tagged by related project (source of truth), mirrored to `Publications.xlsx` on every save. |
+| `Data/cv_outputs.json` | Courses taken and taught, conference contributions, juries and outreach, per reporting period (source of truth), mirrored to `CV_Outputs.xlsx` on every save. A record's *kind* is what groups it on the page. |
 | `Data/custom_tags.json` | Remembers new dropdown options until they're used in a saved row. |
 | `Data/tools.xlsx` | Tools/automations inventory. |
 | `Data/project_pause_notes.json` | Per-pause notes and "forgive" flags on the turnaround chart (Projects Review) — a forgiven pause's days are excluded from that project's turnaround medians. |
@@ -204,6 +213,11 @@ institution-specific setup:
 - **Generic naming throughout.** The main file is `KPI_Report.py` (not a person's name),
   page titles read "KPI Report", and file-glob patterns look for `KPI*.xlsx` instead of a
   name-prefixed pattern.
+- **No CV page.** The private original has one: a CV laid out from its own content store,
+  with everything about the current role computed live from the tracker. It is one person's
+  record, and the animated mark at the top of it is institutional branding, so neither it
+  nor `kpi_cv_view.py` is carried over here. The Publications & Courses page is — what it
+  logs is exactly what such a page would read from.
 - **`publish_snapshot.ps1` takes parameters instead of hardcoded paths.** The private
   original hardcodes one person's Python install, Claude CLI path, and private artifact
   link as defaults so its scheduled task runs unmodified. This copy ships with no

@@ -1,0 +1,84 @@
+{
+  "2025": [
+    {
+      "kind": "Course taught",
+      "title": "Introduction to reproducible analysis, 2-day module",
+      "where": "Example University",
+      "date": "2025-05",
+      "detail": "Designed from scratch; project-based, in Python.",
+      "scale": "18 students",
+      "projects": "",
+      "url": ""
+    },
+    {
+      "kind": "Thesis jury",
+      "title": "Main arguer, MSc thesis defence on sequencing QC",
+      "where": "Example University",
+      "date": "2025-12",
+      "detail": "",
+      "scale": "",
+      "projects": "",
+      "url": ""
+    },
+    {
+      "kind": "Conference poster",
+      "title": "A reusable QC dashboard for facility sequencing runs",
+      "where": "Example Bioinformatics Open Days",
+      "date": "2025-03",
+      "detail": "Corresponding author",
+      "scale": "",
+      "projects": "SEQ_019, LIP_003",
+      "url": ""
+    },
+    {
+      "kind": "Conference talk",
+      "title": "What a small data-analysis service can measure about itself",
+      "where": "Example National Bioinformatics Meeting",
+      "date": "2025-10",
+      "detail": "",
+      "scale": "",
+      "projects": "",
+      "url": ""
+    },
+    {
+      "kind": "Course attended",
+      "title": "Machine learning for multi-omics integration",
+      "where": "Example Courses",
+      "date": "2025-09",
+      "detail": "machine learning, multi-omics integration, Python",
+      "scale": "",
+      "projects": "",
+      "url": ""
+    },
+    {
+      "kind": "Course attended",
+      "title": "Statistics and data analysis with R",
+      "where": "Example Training Centre",
+      "date": "2025-02",
+      "detail": "R, statistics, data analysis",
+      "scale": "",
+      "projects": "",
+      "url": ""
+    },
+    {
+      "kind": "Certification",
+      "title": "Research data management, practitioner level",
+      "where": "Example Institute",
+      "date": "2025-06",
+      "detail": "data management, FAIR data",
+      "scale": "",
+      "projects": "",
+      "url": ""
+    },
+    {
+      "kind": "Outreach",
+      "title": "Open day demo: what the service does, for first-year students",
+      "where": "Example Institute",
+      "date": "2025-11",
+      "detail": "",
+      "scale": "~40 visitors",
+      "projects": "",
+      "url": ""
+    }
+  ]
+}

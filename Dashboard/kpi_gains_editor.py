@@ -109,7 +109,8 @@ def _labels_for(tokens, options):
     return [by_token.get(t, t) for t in tokens]
 
 
-def _save_reuse(dev_id, project_ids, parent_tokens, serves_ids, constant_use):
+def _save_reuse(dev_id, project_ids, parent_tokens, serves_ids, constant_use,
+                output_tokens=()):
     """Write one Reuse row back. Both lists go into the SAME "Came from" cell -- user project
     ids and lineage parents are one column by design (kd._classify_lineage_token sorts them
     out on read), with the ids first so the cell still reads naturally in Excel.
@@ -131,7 +132,13 @@ def _save_reuse(dev_id, project_ids, parent_tokens, serves_ids, constant_use):
                  "User projects served (n)"):
         if col in reuse.columns:
             reuse[col] = reuse[col].astype(object)
-    reuse.loc[mask, "Came from: user projects"] = ", ".join(project_ids + parent_tokens)
+    # A parent this development is an OUTPUT of is written "SP01 (output)"; one it evolved
+    # from is written bare, which is what every token meant before relations existed.
+    written_parents = [
+        kd.format_lineage_token(t, kd.LINEAGE_OUTPUT if t in output_tokens else kd.LINEAGE_EVOLVED)
+        for t in parent_tokens
+    ]
+    reuse.loc[mask, "Came from: user projects"] = ", ".join(project_ids + written_parents)
     reuse.loc[mask, "User projects served: list"] = ", ".join(serves_ids)
     if project_ids:
         reuse.loc[mask, "Came from (n)"] = len(project_ids)
@@ -207,7 +214,13 @@ def render_reuse_editor(name, key_prefix, readonly=False):
         # One cell, two kinds of token: anything matching a user-project id is a project, the
         # rest is a lineage parent (same split kd._classify_lineage_token makes on read).
         from_projects = [t for t in came_from if kd._USER_PROJECT_ID_RE.match(t)]
-        from_parents = [t for t in came_from if not kd._USER_PROJECT_ID_RE.match(t)]
+        # Parent tokens can carry their relation in brackets ("SP01 (output)") -- split it
+        # off so the multiselect matches on the bare token, and so the relation picker below
+        # can start from what is already recorded.
+        parent_relations = dict(kd.split_lineage_relation(t) for t in came_from
+                                if not kd._USER_PROJECT_ID_RE.match(t))
+        from_parents = list(parent_relations)
+        already_output = [t for t, rel in parent_relations.items() if rel == kd.LINEAGE_OUTPUT]
 
         with st.form(f"reuse_{key_prefix}"):
             st.caption(f"Recorded against **{dev_id}** in the gains store.")
@@ -220,8 +233,19 @@ def render_reuse_editor(name, key_prefix, readonly=False):
             picked_parents = st.multiselect(
                 "Grew out of — another tool or special project", list(parent_opts),
                 default=_labels_for(from_parents, parent_opts), key=f"rp_{key_prefix}",
-                help="Names the parent this one evolved from. This is what draws the Lineage "
+                help="Names the parent this one came out of. This is what draws the Lineage "
                      "tree, and it also counts as proof the parent is in use.",
+            )
+            picked_outputs = st.multiselect(
+                "…and which of those is this an OUTPUT of, rather than an evolution of?",
+                list(parent_opts), default=_labels_for(already_output, parent_opts),
+                key=f"ro_{key_prefix}",
+                help="Leave empty when this development REPLACED its parent (the parent is "
+                     "usually retired afterwards) — that's an evolution, the lineage tree's "
+                     "default. Tick a parent here when it produced this one and carries on "
+                     "itself, like OMICs Pipelines producing the Metabolomics Facility "
+                     "Dashboard. The tree draws the two with different arrows. Anything "
+                     "picked here that isn't picked above is ignored.",
             )
             picked_serves = st.multiselect(
                 "Benefits — user projects that build on it", list(project_opts),
@@ -242,6 +266,7 @@ def render_reuse_editor(name, key_prefix, readonly=False):
                         [parent_opts.get(p, p) for p in picked_parents],
                         [project_opts.get(p, p) for p in picked_serves],
                         constant,
+                        output_tokens={parent_opts.get(p, p) for p in picked_outputs},
                     )
                 except PermissionError:
                     st.error(_LOCKED_MSG)

@@ -1281,8 +1281,46 @@ def _parse_id_list(value):
     return [part.strip() for part in str(value).split(",") if part.strip()]
 
 
+# How a development came out of its parent. Two different stories the lineage tree used to
+# draw identically: SP08 REPLACED motif-scan-from-github (an evolution -- the parent is done),
+# while SP11 is an adaptation of SP01 that runs alongside it (an output -- the parent is very
+# much alive and just produced something). A parent token can say which by carrying one of
+# these words in brackets, e.g. "SP01 (output)"; with nothing in brackets it is an evolution,
+# which is what every token written before this existed meant.
+LINEAGE_EVOLVED, LINEAGE_OUTPUT = "evolved", "output"
+_LINEAGE_RELATION_WORDS = {
+    LINEAGE_EVOLVED: {"evolved", "evolution", "evolved into", "evolved from", "replaced"},
+    LINEAGE_OUTPUT: {"output", "output of", "adaptation", "adapted", "adapted from",
+                     "instance", "spin-off", "spinoff", "branch"},
+}
+_LINEAGE_BRACKET_RE = re.compile(r"^(?P<token>.*?)\s*\((?P<relation>[^()]*)\)\s*$")
+
+
+def split_lineage_relation(token):
+    """'SP01 (output)' -> ('SP01', 'output'); 'SP01' -> ('SP01', 'evolved').
+
+    Only a bracket whose contents are a KNOWN relation word is treated as one. Several real
+    developments carry brackets in their own names -- "Project Starter (Cookiecutter)",
+    "Lipidomics toolkit (metabolomics)" -- and stripping those would quietly break the name
+    match that resolves them to a node, so anything unrecognised is left on the token."""
+    text = str(token or "").strip()
+    match = _LINEAGE_BRACKET_RE.match(text)
+    if not match:
+        return text, LINEAGE_EVOLVED
+    word = match.group("relation").strip().lower()
+    for relation, words in _LINEAGE_RELATION_WORDS.items():
+        if word in words:
+            return match.group("token").strip(), relation
+    return text, LINEAGE_EVOLVED
+
+
+def format_lineage_token(token, relation):
+    """The inverse: what to write back into the cell for one parent."""
+    return f"{token} ({LINEAGE_OUTPUT})" if relation == LINEAGE_OUTPUT else token
+
+
 def _classify_lineage_token(token, valid_ids, live_name_lookup):
-    """One raw token from a "Came from" cell -> (kind, key, label).
+    """One raw token from a "Came from" cell -> (kind, key, label, relation).
 
     `kind` is "project" (an id matching _USER_PROJECT_ID_RE -- counts toward came_from_n) or
     "development" (anything else: this workbook's own SP../T.. ids, OR a free-text name that
@@ -1297,18 +1335,19 @@ def _classify_lineage_token(token, valid_ids, live_name_lookup):
     branch instead of silently being treated as a real development. `live_name_lookup` maps
     every normalized name variant seen in tools_df/goals_df to that source's own display
     name (built once by the caller, not per token)."""
-    token = token.strip()
+    token, relation = split_lineage_relation(token)
     if _USER_PROJECT_ID_RE.match(token):
-        return "project", token.upper(), token.upper()
+        # A user project is never a lineage edge, so it has no relation to carry.
+        return "project", token.upper(), token.upper(), LINEAGE_EVOLVED
     upper = token.upper()
     if _DEVELOPMENT_ID_RE.match(upper) and upper in valid_ids:
-        return "development", upper, upper
+        return "development", upper, upper, relation
     norm = _norm_name(token)
     if norm in live_name_lookup:
-        return "development", norm, live_name_lookup[norm]
+        return "development", norm, live_name_lookup[norm], relation
     # Unrecognized text: still "not a user project", so it never counts toward came_from_n,
     # but it won't resolve to anything in led_to either (nothing named it as a live match).
-    return "development", norm, token
+    return "development", norm, token, relation
 
 
 def _is_parent(dev_id, project_name, led_to_by_name):
@@ -1702,7 +1741,9 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
         with an unrecognized name doesn't quietly land in the wrong theme unnoticed.
       - "reuse": the Reuse sheet, come_from/serves columns as real lists, came_from_n /
         serves_n as nullable ints (came_from_n counts ONLY the DNA_*/STAT_* ids -- see
-        came_from_projects below), constant_use bool, led_to, joined to active/state.
+        came_from_projects below), constant_use bool, led_to, came_from_relations
+        (parent label -> "evolved"/"output", see split_lineage_relation), joined to
+        active/state.
         came_from_ids / serves_ids keep their old meaning (the raw token lists); on top of
         those: came_from_projects (DNA_*/STAT_* ids only), came_from_developments (this
         workbook's own ids, or a bare name, for anything in "Came from" that is NOT a user
@@ -1790,7 +1831,7 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
         lambda ids: [i for i in ids if _USER_PROJECT_ID_RE.match(i)]
     )
 
-    came_from_projects_col, came_from_developments_col = [], []
+    came_from_projects_col, came_from_developments_col, came_from_relations_col = [], [], []
     led_to_by_name = {}
     # A lineage parent with no row in THIS workbook still has a live status in tools.xlsx --
     # most usefully "Deprecated", with its reason, which is exactly what a parent that got
@@ -1801,13 +1842,16 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
     lineage_parent_status = {}
     for dev_id, tokens in zip(reuse["ID"], reuse["came_from_ids"]):
         child_name = project_name_by_id.get(dev_id, dev_id)
-        projects, developments_here = [], []
+        projects, developments_here, relations_here = [], [], {}
         for token in tokens:
-            kind, key, label = _classify_lineage_token(token, valid_ids, live_name_lookup)
+            kind, key, label, relation = _classify_lineage_token(token, valid_ids, live_name_lookup)
             if kind == "project":
                 projects.append(key)
             else:
                 developments_here.append(label)
+                # Keyed by the same label came_from_developments carries, so the lineage
+                # chart can look up an edge's relation with what it already iterates.
+                relations_here[label] = relation
                 led_to_by_name.setdefault(key, []).append(child_name)
                 if key not in valid_ids and tools_by_name:
                     for variant in _name_variants(label):
@@ -1817,8 +1861,10 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
                             break
         came_from_projects_col.append(projects)
         came_from_developments_col.append(developments_here)
+        came_from_relations_col.append(relations_here)
     reuse["came_from_projects"] = came_from_projects_col
     reuse["came_from_developments"] = came_from_developments_col
+    reuse["came_from_relations"] = came_from_relations_col
     # Trust the parsed ids over the "(n)" column's cached Excel-formula value whenever ids
     # were actually listed (see module docstring note on load_expected_gains) -- only fall
     # back to the typed number for rows that have a count with no ids at all. Crucially this
@@ -2130,6 +2176,145 @@ def save_publications(all_pubs):
 
 def new_publication():
     return {"title": "", "venue": "", "date": "", "url": "", "projects": ""}
+
+
+# --- ADA outputs: publications' siblings, logged per reporting period ----------------------
+# Courses, conference contributions, juries and outreach done in the ADA role. They used to
+# go into the free-form "beyond projects" cards, which can hold the text but not count it;
+# here each one is a record with a kind and a date, logged against a reporting period and
+# optionally against the project tags it came out of. Publications keep their own older
+# store (publications.json); the Publications & Courses page edits both.
+CV_OUTPUTS_PATH = DATA_DIR / "cv_outputs.json"
+CV_OUTPUTS_XLSX_PATH = DATA_DIR / "CV_Outputs.xlsx"
+
+CV_OUTPUT_KINDS = ["Course attended", "Certification", "Course taught", "Conference poster",
+                   "Conference talk", "Thesis jury", "Outreach", "Other"]
+
+# kind -> the section of a CV such an entry belongs in: it is what groups the kinds on the
+# page, and what a CV view would fold them into. "Other" maps to nothing on purpose -- a
+# record worth keeping for the reporting year, but not a CV line.
+CV_OUTPUT_SECTION = {
+    "Course attended": "courses_certifications",
+    "Certification": "courses_certifications",
+    "Course taught": "teaching",
+    "Conference poster": "conference_contributions",
+    "Conference talk": "conference_contributions",
+    "Thesis jury": "teaching",
+    "Outreach": "volunteering_languages",
+    "Other": None,
+}
+
+CV_OUTPUT_FIELDS = ["kind", "title", "where", "date", "detail", "scale", "projects", "url"]
+
+
+def new_cv_output(kind="Course attended"):
+    return {"kind": kind, "title": "", "where": "", "date": "", "detail": "", "scale": "",
+            "projects": "", "url": ""}
+
+
+def load_cv_outputs():
+    if not CV_OUTPUTS_PATH.exists():
+        return {}
+    try:
+        return json.loads(CV_OUTPUTS_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def export_cv_outputs_to_excel(all_outputs):
+    """One row per output, every reporting period in a single sheet -- the same shape as the
+    publications and beyond-projects mirrors."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "ADA outputs"
+    ws.append(["Period", "Kind", "Title", "Where", "Date", "Detail", "Scale",
+               "Related projects", "URL"])
+    for period_label, entries in all_outputs.items():
+        for entry in entries:
+            ws.append([period_label] + [entry.get(f, "") for f in CV_OUTPUT_FIELDS])
+    for col, width in zip("ABCDEFGHI", (18, 20, 50, 30, 14, 50, 18, 20, 40)):
+        ws.column_dimensions[col].width = width
+    wb.save(CV_OUTPUTS_XLSX_PATH)
+
+
+def save_cv_outputs(all_outputs):
+    """Write the JSON source of truth, then mirror to Excel. Same lock-tolerant contract as
+    save_publications: a warning string back, never a lost edit."""
+    CV_OUTPUTS_PATH.write_text(json.dumps(all_outputs, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        export_cv_outputs_to_excel(all_outputs)
+    except PermissionError:
+        return (f"Saved, but couldn't update {CV_OUTPUTS_XLSX_PATH.name} (close it in Excel to "
+                "refresh the mirror on the next edit).")
+    return None
+
+
+def cv_outputs_flat(all_outputs, kinds=None, period_label=None):
+    """Every logged output as one list, each row carrying the period it was logged under.
+    `kinds` / `period_label` narrow it; newest date first, undated last."""
+    rows = []
+    for label, entries in (all_outputs or {}).items():
+        if period_label and label != period_label:
+            continue
+        for entry in entries:
+            if kinds and entry.get("kind") not in kinds:
+                continue
+            row = dict(entry)
+            row["period"] = label
+            rows.append(row)
+    rows.sort(key=lambda r: str(r.get("date") or ""), reverse=True)
+    return rows
+
+
+# --- Shapes for the table editors ----------------------------------------------------------
+def table_frame(rows, columns):
+    """A DataFrame for st.data_editor with one column per field, typed from what the rows
+    actually hold: a column whose values are all booleans stays boolean (so a tick box keeps
+    working and never round-trips into the string "False", which is truthy), an all-numeric
+    one stays numeric, and everything else is text.
+
+    Lives here rather than in a page because it is plain pandas -- no Streamlit -- and
+    because a page editing a list-of-dict store needs both halves of the round trip."""
+    frame = pd.DataFrame([{c: row.get(c, "") for c in columns} for row in rows], columns=columns)
+    for col in columns:
+        values = [v for v in frame[col] if v not in ("", None) and not _is_blank(v)]
+        if values and all(isinstance(v, bool) for v in values):
+            frame[col] = frame[col].apply(bool)
+        elif values and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
+            frame[col] = pd.to_numeric(frame[col], errors="coerce")
+        else:
+            frame[col] = frame[col].apply(lambda v: "" if _is_blank(v) else str(v))
+    return frame
+
+
+def _is_blank(value):
+    return value is None or (isinstance(value, float) and pd.isna(value))
+
+
+def table_rows(frame, columns, required=None):
+    """`table_frame`'s inverse: back to a list of dicts, dropping rows left entirely blank
+    (st.data_editor's dynamic mode always leaves one at the end) and any row with nothing in
+    the column that identifies it. Numbers come back as ints where they are whole, so the
+    JSON doesn't fill up with 2026.0."""
+    required = required or (columns[0] if columns else None)
+    rows = []
+    for record in frame.to_dict("records"):
+        row = {}
+        for col in columns:
+            value = record.get(col, "")
+            if _is_blank(value):
+                value = ""
+            elif isinstance(value, bool):
+                pass
+            elif isinstance(value, (int, float)):
+                value = int(value) if float(value).is_integer() else float(value)
+            else:
+                value = str(value).strip()
+            row[col] = value
+        if required and not str(row.get(required, "")).strip():
+            continue
+        rows.append(row)
+    return rows
 
 
 # --- Quick-add for the project tracker -----------------------------------------------------

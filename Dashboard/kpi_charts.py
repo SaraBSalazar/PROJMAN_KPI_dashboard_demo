@@ -2379,6 +2379,28 @@ def fig_reuse_both_directions(reuse, state_colors, project_lookup=None):
 # most saturated of the three -- GAIN_GROUP_COLORS and ADA_PERSONAL_COLOR don't touch it).
 _LINEAGE_EVOLVED_EDGE_COLOR = TL_PALETTE[6]
 _LINEAGE_EVOLVED_EDGE_COLOR_DARK = TL_PALETTE_DARK[6]
+# The second kind of lineage edge: the parent didn't become the child, it PRODUCED it and
+# carried on (SP01 -> SP11). A clearly different hue from the evolution violet -- sienna,
+# TL_PALETTE[1], free on this chart (node fills here are the Delivered/In use/Potential
+# palette; the only other use of this slot, fig_audience_outputs' ADA orange, never appears
+# in the same picture) -- AND a different arrowhead, so the two don't rely on colour alone.
+_LINEAGE_OUTPUT_EDGE_COLOR = TL_PALETTE[1]
+_LINEAGE_OUTPUT_EDGE_COLOR_DARK = TL_PALETTE_DARK[1]
+# Plotly annotation arrows cannot be dashed (there is no arrowdash), and these have to stay
+# annotations for the pixel standoffs that keep them clear of the node markers and labels --
+# so the two relations differ by hue and by ARROWHEAD SHAPE, and the legend swatches are
+# solid lines in those same hues rather than promising a dash that isn't drawn.
+_LINEAGE_EDGE_STYLE = {
+    "evolved": dict(label="evolved into", arrowhead=2),
+    "output": dict(label="output of", arrowhead=5),
+}
+# Marker shape = kind, independent of both the edge colour above and the state fill below. No
+# "User project" entry -- this chart never draws a user-project node (see fig_lineage_tree).
+_LINEAGE_KIND_SYMBOLS = {
+    "Special Project": "circle",
+    "Tool / AI Skill": "diamond",   # also used for an "untracked" lineage parent -- see
+                                     # _lineage_resolve_parent
+}
 # Marker shape = kind, independent of both the edge colour above and the state fill below. No
 # "User project" entry -- this chart never draws a user-project node (see fig_lineage_tree).
 _LINEAGE_KIND_SYMBOLS = {
@@ -2400,14 +2422,16 @@ def _depth_col_label(depth):
     """x-axis tick text for one development column -- "Depth 0"/"Depth 1" is this function's
     OWN internal vocabulary (depth_of, dev_col) leaking into the UI; a reader has no reason to
     know what "depth" means here. depth 0 (no development parent of its own) reads as plain
-    "Developments"; every column past it names the RELATIONSHIP that got it there instead of
-    a number -- "Evolved into" for one hop, "Evolved into (Nth step)" for N, so it still reads
-    correctly whether there's 1, 2, or 5 development columns."""
+    "Developments"; every column past it says how far down the chain it sits rather than
+    naming a number, so it still reads correctly whether there's 1, 2, or 5 development
+    columns. It deliberately does NOT name the relationship any more: a column can hold both
+    a child that evolved out of its parent and one that is an output of a parent still
+    running, and the arrows themselves are what say which (see _LINEAGE_EDGE_STYLE)."""
     if depth == 0:
         return "Developments"
     if depth == 1:
-        return "Evolved into"
-    return f"Evolved into<br>({_ordinal(depth)} step)"
+        return "Came out of them"
+    return f"Came out of them<br>({_ordinal(depth)} step)"
 
 
 def _norm(s):
@@ -2475,8 +2499,15 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
         Hollow rather than grey-filled on purpose -- see the marker trace below.
     Both encodings are spelled out in the legend, in two titled groups ("Shape = kind" /
     "Fill = state"), with only the states actually present in the tree listed.
-    There's only one relationship left to draw (no edge-colour legend needed): a single flat
-    "evolved into" colour (_LINEAGE_EVOLVED_EDGE_COLOR), drawn as a real annotation ARROW (not
+    Edges carry the third encoding: ARROW COLOUR + HEAD = how the child came about --
+    "evolved into" (the parent became the child and is usually retired: motif-scan-from-github
+    -> FT Motif Search) or "output of" (the parent produced it and carries on: OMICs Pipelines
+    -> Metabolomics Facility Dashboard). Which one an edge is comes from the parent token
+    itself ("SP01 (output)", see kd.split_lineage_relation); a token with nothing in brackets
+    is an evolution. Both are spelled out in a third legend group, and they differ in head
+    shape as well as colour so the distinction survives without colour.
+
+    Edges are drawn as a real annotation ARROW (not
     a plain Scatter line) so direction always reads unambiguously -- both ends held back from
     the node markers (`standoff`) in pixels, and the tail held back FAR more (`startstandoff`)
     so a same-row edge (the common case for a simple one-parent one-child chain, e.g. the
@@ -2484,7 +2515,7 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
     midpoint) doesn't run straight through the source node's own label -- which sits
     immediately beside it, at the identical height, by design (see LABEL_XSHIFT below).
 
-    Only developments/tools that participate in at least one "evolved into" edge are drawn --
+    Only developments/tools that participate in at least one lineage edge are drawn --
     with nothing recorded at all this returns a deliberate empty-state figure (see _empty)
     instead of 16 floating, disconnected dots. The page prefers to skip calling this entirely in that case and show a richer
     markdown explainer instead (see pages/5_Gains.py's own n_evolved check), but this function
@@ -2519,16 +2550,22 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
 
     parents_by_id = {}   # dev ID -> [resolved parent node ids] (development/tool parents only)
     parent_info = {}     # resolved parent node id -> (display name, kind, state)
+    edge_relation = {}   # (parent node id, child dev ID) -> "evolved" / "output"
     for dev_id, row in dev_by_id.items():
         reuse_row = reuse_by_id.get(dev_id)
         if reuse_row is None:
             continue
         resolved = []
+        relations = reuse_row["came_from_relations"] if "came_from_relations" in reuse_row else {}
         for label in _as_id_list(reuse_row["came_from_developments"]):
             node_id, name, kind, state = _lineage_resolve_parent(label, dev_by_id, dev_by_name)
             if node_id == dev_id:
                 continue  # a malformed self-reference is never drawn as an edge to itself
             resolved.append(node_id)
+            # Relations are keyed by the same label came_from_developments carries (kpi_data
+            # builds both in one pass); an older workbook with no relations column at all
+            # falls back to "evolved", which is what every token meant before this existed.
+            edge_relation[(node_id, dev_id)] = (relations or {}).get(label, "evolved")
             parent_info.setdefault(node_id, (name, kind, state))
         parents_by_id[dev_id] = resolved
 
@@ -2616,7 +2653,10 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
     # Edge colour follows the module's own light/dark flag (set once per page via set_theme),
     # same as every other theme-dependent constant in this file (e.g. output_colors) -- not a
     # dict-identity check against the caller's state_colors, which would be fragile.
-    edge_color = _LINEAGE_EVOLVED_EDGE_COLOR_DARK if _DARK else _LINEAGE_EVOLVED_EDGE_COLOR
+    edge_colors = {
+        "evolved": _LINEAGE_EVOLVED_EDGE_COLOR_DARK if _DARK else _LINEAGE_EVOLVED_EDGE_COLOR,
+        "output": _LINEAGE_OUTPUT_EDGE_COLOR_DARK if _DARK else _LINEAGE_OUTPUT_EDGE_COLOR,
+    }
     ARROW_HEAD_STANDOFF = 14    # px clear of the target marker's own radius+line (markers are
     # size=16, same clearance LABEL_XSHIFT below uses for the same reason)
     ARROW_TAIL_STANDOFF = 120   # px clear of the SOURCE node's own label -- generous on purpose:
@@ -2626,10 +2666,13 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
     # it at the identical height. 120px comfortably clears a label wrapped at _wrap_label's
     # 16-character width in this chart's 10pt font even at its longest.
     for src, dst in edges:
+        relation = edge_relation.get((src, dst), "evolved")
+        style = _LINEAGE_EDGE_STYLE[relation]
         fig.add_annotation(
             x=depth_memo[dst], y=y_pos[dst], ax=depth_memo[src], ay=y_pos[src],
             xref="x", yref="y", axref="x", ayref="y",
-            showarrow=True, arrowhead=2, arrowsize=1.1, arrowwidth=1.8, arrowcolor=edge_color,
+            showarrow=True, arrowhead=style["arrowhead"], arrowsize=1.1, arrowwidth=1.8,
+            arrowcolor=edge_colors[relation],
             standoff=ARROW_HEAD_STANDOFF, startstandoff=ARROW_TAIL_STANDOFF,
         )
 
@@ -2726,6 +2769,20 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
             showlegend=True, legendgroup="state", legendgrouptitle_text="Fill = state",
             marker=dict(symbol="circle", size=11, color=TL_SURFACE,
                         line=dict(color=TL_BASELINE, width=2)),
+        ))
+
+    # Arrow colour/head = which KIND of lineage this is. Listed only for the relations
+    # actually drawn, same rule the state half of the legend follows: never advertise an
+    # encoding that isn't on screen. The swatch is a short line in the edge's own colour --
+    # a marker swatch would say nothing about an arrow.
+    relations_present = [r for r in ("evolved", "output")
+                         if any(edge_relation.get(e, "evolved") == r for e in edges)]
+    for relation in relations_present:
+        style = _LINEAGE_EDGE_STYLE[relation]
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="lines", name=style["label"], showlegend=True,
+            legendgroup="edge", legendgrouptitle_text="Arrow = how it came about",
+            line=dict(color=edge_colors[relation], width=2.5),
         ))
 
     tick_positions = list(range(max_depth + 1))

@@ -22,18 +22,24 @@ import streamlit as st
 if st.query_params.get("readonly") is not None:
     st.session_state["readonly"] = st.query_params.get("readonly") in ("1", "true", "yes", "True")
 
+# Sidebar icons are Material Symbols (":material/name:"), not emoji: they're monochrome, they
+# take the theme's own ink colour, and they line up at one optical weight -- a row of emoji
+# reads as decoration next to them. The browser-tab icon each page sets in its own
+# st.set_page_config stays an emoji, where a flat glyph is the thing that's legible at 16px.
 pg = st.navigation({
     "Reporting": [
-        st.Page("pages/0_Overview.py", title="Overview", icon="📊", default=True),
-        st.Page("pages/1_Projects_Review.py", title="Projects Review", icon="🗂️"),
+        st.Page("pages/0_Overview.py", title="Overview", icon=":material/dashboard:", default=True),
+        st.Page("pages/1_Projects_Review.py", title="Projects Review", icon=":material/folder_open:"),
+        st.Page("pages/6_Publications_Courses.py", title="Publications & Courses",
+                icon=":material/menu_book:"),
     ],
     "Development": [
-        st.Page("pages/2_Special_Projects.py", title="Special Projects", icon="🎯"),
-        st.Page("pages/3_Tools.py", title="Tools & AI Skills", icon="🛠️"),
-        st.Page("pages/5_Gains.py", title="Gains & Outputs", icon="💡"),
+        st.Page("pages/2_Special_Projects.py", title="Special Projects", icon=":material/flag:"),
+        st.Page("pages/3_Tools.py", title="Tools & AI Skills", icon=":material/handyman:"),
+        st.Page("pages/5_Gains.py", title="Gains & Outputs", icon=":material/trending_up:"),
     ],
     "Data": [
-        st.Page("pages/4_Add_Data.py", title="Add Data", icon="➕"),
+        st.Page("pages/4_Add_Data.py", title="Add Data", icon=":material/edit_note:"),
     ],
 })
 pg.run()

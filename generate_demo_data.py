@@ -488,6 +488,51 @@ def build_publications():
     print(f"wrote {DATA_DIR / 'Publications.xlsx'}")
 
 
+# --- 4b) Publications' siblings: courses, conferences, juries, outreach ------------------
+# Same shape as the publications above and the same page edits both: one record per output,
+# with a `kind` that decides which group it shows up under (and which CV section it would
+# belong to). Tagged with fake project ids so the link back to the tracker resolves.
+CV_OUTPUTS = [
+    ("Course taught", "Introduction to reproducible analysis, 2-day module",
+     "Example University", "-05", "Designed from scratch; project-based, in Python.",
+     "18 students", "", ""),
+    ("Thesis jury", "Main arguer, MSc thesis defence on sequencing QC",
+     "Example University", "-12", "", "", "", ""),
+    ("Conference poster", "A reusable QC dashboard for facility sequencing runs",
+     "Example Bioinformatics Open Days", "-03", "Corresponding author", "",
+     "SEQ_019, LIP_003", ""),
+    ("Conference talk", "What a small data-analysis service can measure about itself",
+     "Example National Bioinformatics Meeting", "-10", "", "", "", ""),
+    ("Course attended", "Machine learning for multi-omics integration",
+     "Example Courses", "-09", "machine learning, multi-omics integration, Python", "", "", ""),
+    ("Course attended", "Statistics and data analysis with R",
+     "Example Training Centre", "-02", "R, statistics, data analysis", "", "", ""),
+    ("Certification", "Research data management, practitioner level",
+     "Example Institute", "-06", "data management, FAIR data", "", "", ""),
+    ("Outreach", "Open day demo: what the service does, for first-year students",
+     "Example Institute", "-11", "", "~40 visitors", "", ""),
+]
+
+
+def build_cv_outputs():
+    period_label = f"{YEAR}"
+    entries = [
+        {"kind": kind, "title": title, "where": where, "date": f"{YEAR}{month}",
+         "detail": detail, "scale": scale, "projects": projects, "url": url}
+        for kind, title, where, month, detail, scale, projects, url in CV_OUTPUTS
+    ]
+    data = {period_label: entries}
+    path = DATA_DIR / "cv_outputs.json"
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"wrote {path}")
+
+    rows = [{"Period": period_label, "Kind": e["kind"], "Title": e["title"], "Where": e["where"],
+             "Date": e["date"], "Detail": e["detail"], "Scale": e["scale"],
+             "Related projects": e["projects"], "URL": e["url"]} for e in entries]
+    pd.DataFrame(rows).to_excel(DATA_DIR / "CV_Outputs.xlsx", sheet_name="ADA outputs", index=False)
+    print(f"wrote {DATA_DIR / 'CV_Outputs.xlsx'}")
+
+
 # --- 5) Tools & AI Skills inventory ------------------------------------------------------
 TOOLS = [
     ("QC Dashboard", "Adaptation of the internal pipeline into a facility-specific QC dashboard.",
@@ -552,7 +597,9 @@ GAIN_COLUMNS = [
 # Lineage ("Came from: user projects" naming ANOTHER development by its own ID here, not a user
 # project) gives two development-to-development chains: QC Dashboard (a TOOL) -> Dataset
 # Browser, and Request Triage Tool -> Template Library -- so the evolution tree has real edges
-# to draw instead of the empty state. Served/came-from ids are real FAKE_PROJECT_TAGS, so the
+# to draw instead of the empty state. One of them is written "T01 (output)" rather than plain
+# "T01": the Dataset Browser came OUT of the QC Dashboard, which carries on, where Template
+# Library replaced the Request Triage Tool. The tree draws the two with different arrows. Served/came-from ids are real FAKE_PROJECT_TAGS, so the
 # project-tracker join resolves them instead of leaving them "unmatched".
 EXPECTED_GAINS_OVERVIEW = [
     # Project, Category, Goal, Status, Output level, Expected gains,
@@ -583,7 +630,7 @@ EXPECTED_GAINS_OVERVIEW = [
      "Internal ADA", "Internal dataset exploration; early AI-assisted QC'd-dataset browsing.",
      [True, False, False, False, False],
      ["Internal management", "AI skills (Bigorna Project)"],
-     "T01", "", "Not defined", "Project-specific"),
+     "T01 (output)", "", "Not defined", "Project-specific"),
     ("Snippet Library", "Special Project", "03 - Build internal tooling", "Completed",
      "Internal Worker", "Faster onboarding via reusable code snippets; builds user capacitation.",
      [True, False, False, False, True],
@@ -658,9 +705,12 @@ def build_expected_gains():
             assert name in tool_names, f"{name!r} (gains workbook) isn't a TOOLS name"
     for cell in (row[8] for row in EXPECTED_GAINS_OVERVIEW):
         for tok in (t.strip() for t in cell.split(",") if t.strip()):
-            if tok in EXPECTED_GAINS_IDS.values():
+            # A lineage parent can carry its relation in brackets ("T01 (output)"); the id
+            # is what has to be real, so check the token with the relation stripped off.
+            bare = tok[:tok.rindex("(")].strip() if tok.endswith(")") and "(" in tok else tok
+            if bare in EXPECTED_GAINS_IDS.values():
                 continue  # a lineage reference to another development's ID, not a project tag
-            assert tok in FAKE_PROJECT_TAGS, f"{tok!r} (Came from) isn't a FAKE_PROJECT_TAGS tag"
+            assert bare in FAKE_PROJECT_TAGS, f"{tok!r} (Came from) isn't a FAKE_PROJECT_TAGS tag"
     for cell in (row[9] for row in EXPECTED_GAINS_OVERVIEW):
         for tok in (t.strip() for t in cell.split(",") if t.strip()):
             assert tok in FAKE_PROJECT_TAGS, f"{tok!r} (served) isn't a FAKE_PROJECT_TAGS tag"
@@ -831,7 +881,8 @@ def build_empty(year=None):
 
     for stray in ("special_project_tasks.json", "Special_Projects_Tasks.xlsx",
                   "beyond_projects.json", "Beyond_Projects.xlsx",
-                  "publications.json", "Publications.xlsx", "KPI_2025.xlsx"):
+                  "publications.json", "Publications.xlsx",
+                  "cv_outputs.json", "CV_Outputs.xlsx", "KPI_2025.xlsx"):
         p = DATA_DIR / stray
         if p.exists():
             p.unlink()
@@ -861,6 +912,7 @@ if __name__ == "__main__":
         build_special_projects()
         build_beyond_projects()
         build_publications()
+        build_cv_outputs()
         build_tools()
         build_expected_gains()
         build_custom_tags()
