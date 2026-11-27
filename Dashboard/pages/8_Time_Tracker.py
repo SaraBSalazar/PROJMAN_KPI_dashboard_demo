@@ -846,7 +846,42 @@ with tab_break:
     if level2 == level1:
         level2 = None
 
-    grid = kd.tracker_breakdown(segments, level1, level2)
+    # A slice of the week, asked and answered here only: the calendar still draws the whole
+    # week, and the push still sends the whole week. This is for "what did Friday afternoon
+    # actually go on", which is a question about one corner of the grid, not a mode the page
+    # is in.
+    f1, f2, f3 = st.columns([1.6, 2.2, 0.9], vertical_alignment="bottom")
+    picked_days = f1.multiselect(
+        "Days", options=list(range(7)), key="tt_bd_days",
+        format_func=lambda d: f"{DAY_NAMES[d]} {(week_start + pd.Timedelta(d, 'D')).day}",
+        placeholder="every day")
+    from_t, to_t = f2.slider(
+        "Between", min_value=dt.time(0, 0), max_value=dt.time(23, 59),
+        value=(dt.time(0, 0), dt.time(23, 59)), step=dt.timedelta(minutes=15),
+        format="HH:mm", key="tt_bd_window")
+    from_min = from_t.hour * 60 + from_t.minute
+    # The slider can't offer 24:00, so its top notch means "to the end of the day" -- without
+    # this, the last minute before midnight would quietly fall outside every unfiltered view.
+    to_min = 1440 if to_t >= dt.time(23, 59) else to_t.hour * 60 + to_t.minute
+    sliced = bool(picked_days) or from_min > 0 or to_min < 1440
+
+    if f3.button("Reset", key="tt_bd_reset", disabled=not sliced, width="stretch"):
+        st.session_state.pop("tt_bd_days", None)
+        st.session_state.pop("tt_bd_window", None)
+        st.rerun()
+
+    shown = kd.clip_segments(segments, picked_days, from_min, to_min) if sliced else segments
+    if sliced:
+        day_text = (", ".join(f"{DAY_NAMES[d]} {(week_start + pd.Timedelta(d, 'D')).day}"
+                              for d in sorted(picked_days)) if picked_days else "every day")
+        window_text = (f"{from_t:%H:%M}–{'24:00' if to_min >= 1440 else f'{to_t:%H:%M}'}"
+                       if (from_min or to_min < 1440) else "all day")
+        st.info(f"Showing **{day_text}**, **{window_text}** — "
+                f"**{kd.format_hm(float(shown['hours'].sum()) if len(shown) else 0.0)}** of the "
+                f"week's {kd.format_hm(tracked_hours)}. A stretch crossing the edge of the "
+                f"window counts only the part inside it.", icon="🔎")
+
+    grid = kd.tracker_breakdown(shown, level1, level2)
     group_colors = colors_for(level1)
 
     def cell(hours):
@@ -854,7 +889,8 @@ with tab_break:
                 else '<span class="tt-zero">–</span>')
 
     if not grid["groups"]:
-        st.info("Nothing tracked this week yet — the calendar tab says the same thing with "
+        st.info("Nothing tracked in that slice yet." if sliced else
+                "Nothing tracked this week yet — the calendar tab says the same thing with "
                 "more space.")
     else:
         head = "".join(f"<th>{DAY_NAMES[d]} {(week_start + pd.Timedelta(d, 'D')).day}</th>"
@@ -878,7 +914,8 @@ with tab_break:
             f'<tbody>{"".join(body)}</tbody>'
             f'<tfoot><tr><th>Total</th>{foot}<th>{kd.format_hm(grid["total"])}</th></tr></tfoot>'
             f'</table></div>', unsafe_allow_html=True)
-        st.caption(f"Hours per day for every {level1_label.lower()} this week"
+        st.caption(f"Hours per day for every {level1_label.lower()}"
+                   + (" in the slice above" if sliced else " this week")
                    + (f", split by {level2_label.lower()}." if level2 else ".")
                    + " Ordered by total, so the week reads top-down as where the time went. "
                      "A still-running timer counts the time it has run so far.")

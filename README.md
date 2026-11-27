@@ -181,7 +181,12 @@ together instead of being scattered through one flat list.
   **calendar** — one block per stretch of work at the hour it happened, coloured by category
   or project, overlapping stretches side by side, anything past midnight drawn in both days
   — and a **breakdown** — hours per day for every project, split by major task (or any other
-  pair of fields), ordered by total. Entries are editable as a table, and one can be added
+  pair of fields), ordered by total. The breakdown alone can be narrowed to **a
+  slice of the week** — pick days and a time-of-day window and it answers "what did Friday
+  afternoon actually go on". It *clips* rather than filters: a stretch running 13:00–16:00
+  contributes its last two hours to a 14:00-onwards window, not all three and not none. The
+  slice stays in that tab — the calendar still draws the whole week, the headline tiles
+  still count it, and the push still sends it. Entries are editable as a table, and one can be added
   by hand for a stretch you forgot — or **click any block on the calendar** to open it:
   its date, start, end and tags, with ±15-minute nudges on each end, plus delete and
   "start a new timer like this". Clicking a grey calendar block offers to track that

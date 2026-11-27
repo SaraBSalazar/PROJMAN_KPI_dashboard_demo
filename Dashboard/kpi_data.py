@@ -3813,6 +3813,32 @@ def _group_label(value):
     return text if text and text.lower() != "nan" else "(unlabelled)"
 
 
+def clip_segments(segments, days=None, from_min=0, to_min=1440):
+    """The part of each block falling inside a day selection and a time-of-day window.
+
+    Clipping, not filtering, and the difference is the whole point: "what did I do on Friday
+    after 2pm" about a block running 13:00-16:00 means its last two hours -- not all three
+    (filtering by overlap) and not none (filtering by containment). `hours` is recomputed
+    from the clipped span, so every total built on the result is an answer to the question
+    asked rather than to the week.
+
+    `days` holds 0-6, Monday first; None or empty means every day. A window with nothing in
+    it comes back empty rather than inverted."""
+    if segments.empty:
+        return segments
+    out = segments.copy()
+    if days:
+        out = out[out["day"].isin(list(days))]
+    lo, hi = max(0.0, float(from_min)), min(1440.0, float(to_min))
+    if hi <= lo:
+        return out.iloc[0:0]
+    out = out[(out["end_min"] > lo) & (out["start_min"] < hi)].copy()
+    out["start_min"] = out["start_min"].clip(lower=lo)
+    out["end_min"] = out["end_min"].clip(upper=hi)
+    out["hours"] = (out["end_min"] - out["start_min"]) / 60
+    return out[out["hours"] > 0]
+
+
 def day_row(frame):
     """Hours per weekday (Monday first) for a frame of segments -- the row the breakdown
     grid draws, and the same split the push preview shows against each proposed time-log
