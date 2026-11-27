@@ -1153,6 +1153,19 @@ GAINS_REUSE_COLS = [
     "User projects served (n)", "User projects served: list",
 ]
 GAINS_VALUE_COLS = ["ID", "Project", "Audience", "Value basis", "Unit price (€)", "Unit"]
+# The 5 x/blank audience-and-output columns of the Overview sheet, as one list rather than the
+# same literal retyped in each place that needs it (load_expected_gains parses them to bool,
+# kpi_charts.fig_audience_outputs draws one row per flag, the Gains page counts how many
+# developments carry none of them). They are a SUBSET of GAINS_OVERVIEW_COLS above, not a
+# separate set of columns -- adding a flag means adding it to both.
+GAIN_AUDIENCE_FLAGS = [
+    "Internal users", "External users", "Facility use / collaboration",
+    "Publication potential", "Market-equivalent value",
+]
+# "Output level" values that mean the development was built for ADA or personal/internal use
+# rather than for anyone it would call a "user" -- the audience dimension the 5 flags above
+# never ask about. Drawn as fig_audience_outputs' own pinned first row.
+GAIN_ADA_OUTPUT_LEVELS = frozenset({"Internal ADA", "Internal Worker"})
 
 # The Gains sheet groups its gain columns under merged headers (row 2, not read as data since
 # the header row is 3) -- GAIN_GROUPS is the dashboard's own record of that grouping (hardcoded
@@ -1781,11 +1794,7 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
     overview = overview[overview["ID"].astype(str).str.strip() != ""].reset_index(drop=True)
     for col in ["ID", "Category", "Goal", "Project", "Status", "Output level", "Expected gains"]:
         overview[col] = overview[col].astype(str).str.strip()
-    flag_cols = [
-        "Internal users", "External users", "Facility use / collaboration",
-        "Publication potential", "Market-equivalent value",
-    ]
-    for col in flag_cols:
+    for col in GAIN_AUDIENCE_FLAGS:
         overview[col] = overview[col].astype(str).str.strip().str.lower() == "x"
     overview["constant_use"] = overview["Use pattern"].astype(str).str.strip() == "Constant use"
 

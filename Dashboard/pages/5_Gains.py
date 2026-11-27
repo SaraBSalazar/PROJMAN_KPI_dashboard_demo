@@ -163,6 +163,88 @@ def _insight_caption(gain_summary):
             f"largely banked; the outward-facing one is still ahead.")
 
 
+def _vb(n, singular, plural):
+    """Number agreement for the derived captions below -- they are assembled from live counts,
+    so a count that happens to be 1 ("1 of the 16 developments are drawn") would otherwise read
+    as a typo in exactly the situation a reader is most likely to notice it."""
+    return singular if n == 1 else plural
+
+
+def _names(rows, limit=4):
+    """A readable inline list of development names, capped -- a coverage caption naming 3
+    developments is useful, one naming 14 is a wall of text where the NUMBER was the point."""
+    names = list(rows["Project"])
+    if len(names) > limit:
+        return ", ".join(names[:limit]) + f", +{len(names) - limit} more"
+    return ", ".join(names)
+
+
+def _audience_coverage_caption(developments):
+    """How much of the "What delivers what" set the audience chart actually speaks for.
+    Derived every load like _insight_caption, never hardcoded. The counts a reader would
+    otherwise have to get by counting bars -- and, for the developments that land in NO row
+    at all, couldn't get from the chart however long they looked at it, since a development
+    with no audience is drawn as nothing rather than as an empty row."""
+    n_total = len(developments)
+    has_flag = developments[kd.GAIN_AUDIENCE_FLAGS].any(axis=1)
+    is_ada = developments["Output level"].isin(kd.GAIN_ADA_OUTPUT_LEVELS)
+    ada_only = developments[~has_flag & is_ada]
+    nowhere = developments[~has_flag & ~is_ada]
+
+    n_flagged = int(has_flag.sum())
+    parts = [f"**{n_flagged} of the {n_total} "
+             f"{_vb(n_total, 'development', 'developments')}** in *What delivers what* "
+             f"{_vb(n_flagged, 'claims', 'claim')} at least one of the 5 audience/output "
+             f"flags above."]
+    if len(ada_only):
+        parts.append(f"**{len(ada_only)}** {_vb(len(ada_only), 'claims', 'claim')} none of "
+                     f"them and {_vb(len(ada_only), 'appears', 'appear')} only in the **ADA / "
+                     f"Personal** row -- built for ADA or personal/internal use, no outside "
+                     f"audience claimed yet ({_names(ada_only)}).")
+    if len(nowhere):
+        # Not a styling choice: this is the one case the chart genuinely cannot show, so the
+        # caption is the only place it can be said. Reads as a data-health nudge on purpose.
+        parts.append(f"**{len(nowhere)}** {_vb(len(nowhere), 'appears', 'appear')} in **no "
+                     f"row of this chart at all** -- neither "
+                     f"a flag nor an ADA/Personal output level, so nothing on record says who "
+                     f"they are for ({_names(nowhere)}).")
+    return " ".join(parts)
+
+
+def _reuse_coverage_caption(reuse, n_developments):
+    """Same idea for the reuse butterfly: how many of the developments in "What delivers what"
+    the chart draws at all, split by which side they land on. Rows with nothing on either side
+    are dropped by fig_reuse_both_directions (by design -- an all-zero row is noise), so
+    without this the chart silently speaks for a subset and looks like it speaks for all."""
+    left_n = reuse["came_from_projects"].map(len)
+    right_n = reuse["serves_project_ids"].map(len)
+    n_built = int((left_n > 0).sum())
+    n_benefits = int((right_n > 0).sum())
+    n_both = int(((left_n > 0) & (right_n > 0)).sum())
+    n_drawn = int(((left_n + right_n) > 0).sum())
+    # Anything with no reuse row at all counts as "nothing recorded" just as much as a row of
+    # two empty cells does, so the remainder is taken against the development count, not the
+    # reuse sheet's own row count.
+    n_absent = n_developments - n_drawn
+    absent_constant = int((reuse["constant_use"] & ((left_n + right_n) == 0)).sum())
+
+    benefits_txt = (f"**{n_benefits}** with at least one project benefiting from them"
+                    if n_benefits else "**none** yet with a project recorded as benefiting from it")
+    parts = [f"**{n_drawn} of the {n_developments} "
+             f"{_vb(n_developments, 'development', 'developments')}** in *What delivers what* "
+             f"{_vb(n_drawn, 'appears', 'appear')} above -- **{n_built}** built out of real "
+             f"user projects, {benefits_txt}" + (f", **{n_both}** both" if n_both else "") + "."]
+    if n_absent > 0:
+        tail = (f" -- {absent_constant} of those {_vb(absent_constant, 'is', 'are')} "
+                f"constant-use, which the workbook's own convention leaves uncounted on "
+                f"purpose, leaving "
+                f"**{n_absent - absent_constant}** with reuse genuinely unrecorded so far"
+                if absent_constant else "")
+        parts.append(f"Nothing is recorded in either direction for the other "
+                     f"**{n_absent}**{tail}.")
+    return " ".join(parts)
+
+
 # --- What delivers what ------------------------------------------------------------------
 st.subheader("What delivers what", anchor="gains-matrix")
 st.caption(f"Every dot in a row shares that development's state -- Delivered developments read "
@@ -211,6 +293,7 @@ st.caption("**ADA / Personal** (orange marker) is the innermost tier -- built fo
            "different distances, while ADA/Personal is about work that never left the "
            "building at all. That last row is a *potential* -- the development could reach "
            "past the institution -- not a count of external users it already has.")
+st.caption(_audience_coverage_caption(developments))
 
 # --- Value potential: its own full-width section ------------------------------------------
 # Used to sit squeezed into the narrow right column beside the audience chart, under a bare
@@ -275,6 +358,7 @@ if not READONLY:
 # --- Reuse: built out of real user work, and who benefits from it --------------------------
 st.subheader("Reuse: built out of real user work, and who benefits", anchor="gains-reuse")
 st.plotly_chart(kc.fig_reuse_both_directions(reuse, STATE_COLORS, project_lookup), width="stretch")
+st.caption(_reuse_coverage_caption(reuse, n_dev))
 if not reuse["serves_project_ids"].map(len).sum():
     st.caption("The right-hand 'benefits' side is empty because nothing is listed yet under "
                "**User projects served** on the Reuse sheet -- it's not broken, there's just "

@@ -9,7 +9,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from kpi_data import (
-    BASELINE, FINISHED_COLOR, GAIN_GROUPS, GAIN_STATE_LABELS, GRID, INK, MUTED,
+    BASELINE, FINISHED_COLOR, GAIN_ADA_OUTPUT_LEVELS, GAIN_AUDIENCE_FLAGS, GAIN_GROUPS,
+    GAIN_STATE_LABELS, GRID, INK, MUTED,
     RECEIVED_COLOR, TL_BASELINE, TL_CRITICAL, TL_GOOD, TL_GRID, TL_INK_MUTED, TL_INK_PRIMARY,
     TL_INK_SECONDARY, TL_PALETTE, TL_PALETTE_DARK, TL_SURFACE, WORKLOAD_COLOR,
     _name_variants, effective_received_date, effective_workload_start, format_hm,
@@ -2144,8 +2145,6 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
     return fig
 
 
-_ADA_OUTPUT_LEVELS = {"Internal ADA", "Internal Worker"}
-
 # Display-only renames for the audience flag rows -- the gains workbook's own column headers
 # stay exactly as they are (they're what kd reads by name), this just changes what a reader
 # sees. "External users" was being read as a count of users who already exist outside the
@@ -2176,10 +2175,6 @@ def fig_audience_outputs(developments, state_colors, ada_color):
     chip baked into its tick label text (not a hand-placed shape -- Plotly auto-sizes the
     left margin around its own tick text, so a shape positioned by guessed paper-coordinates
     would risk clipping or drifting across screen sizes in a way text-in-the-label can't)."""
-    flag_cols = [
-        "Internal users", "External users", "Facility use / collaboration",
-        "Publication potential", "Market-equivalent value",
-    ]
 
     def _row(flag, flagged):
         delivered_rows = flagged[flagged["state"] == "Delivered"]
@@ -2193,9 +2188,9 @@ def fig_audience_outputs(developments, state_colors, ada_color):
             potential_projects=list(potential_rows["Project"]),
         )
 
-    ada_mask = developments["Output level"].isin(_ADA_OUTPUT_LEVELS)
+    ada_mask = developments["Output level"].isin(GAIN_ADA_OUTPUT_LEVELS)
     rows = [_row("ADA / Personal", developments[ada_mask])]
-    for col in flag_cols:
+    for col in GAIN_AUDIENCE_FLAGS:
         rows.append(_row(_AUDIENCE_FLAG_LABELS.get(col, col), developments[developments[col]]))
     ada_row, rest = rows[:1], rows[1:]
     rest.sort(key=lambda r: r["n_total"], reverse=True)
