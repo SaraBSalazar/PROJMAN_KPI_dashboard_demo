@@ -224,11 +224,19 @@ def _reuse_coverage_caption(reuse, developments):
     n_both = int(((left_n > 0) & (right_n > 0)).sum())
     drawn_ids = set(reuse.loc[(left_n + right_n) > 0, "ID"])
     n_drawn = len(drawn_ids)
+    # The three-way split below is what reconciles this chart with the "Built out of real user
+    # projects" tile at the top of the page, which is larger. The tile counts came_from_n,
+    # which falls back to the "Came from (n)" cell's TYPED number for a row that records how
+    # many user projects fed a development without listing which ones. That row has a real
+    # number behind it, so the tile is right to count it -- but there is no id to put on a
+    # bar, so the chart cannot draw it. Saying so here is the only place the two numbers stop
+    # looking like a contradiction, and it names the rows whose ids are worth typing in.
+    counted_only_ids = set(reuse.loc[(reuse["came_from_n"].notna()) & (left_n + right_n == 0), "ID"])
     # Counted off the DEVELOPMENTS, not off the Reuse sheet: a development with no Reuse row
     # at all (hand-deleted in Excel -- the editors always write the three sheets together)
-    # has nothing recorded just as much as one with a row of two empty cells, and only
-    # Overview's own "Use pattern" column can still say whether it is constant-use.
-    absent = developments[~developments["ID"].isin(drawn_ids)]
+    # has nothing recorded just as much as one with a row of empty cells, and only Overview's
+    # own "Use pattern" column can still say whether it is constant-use.
+    absent = developments[~developments["ID"].isin(drawn_ids | counted_only_ids)]
     n_absent = len(absent)
     absent_constant = int(absent["constant_use"].sum())
 
@@ -238,13 +246,21 @@ def _reuse_coverage_caption(reuse, developments):
              f"{_vb(n_developments, 'development', 'developments')}** in *What delivers what* "
              f"{_vb(n_drawn, 'appears', 'appear')} above -- **{n_built}** built out of real "
              f"user projects, {benefits_txt}" + (f", **{n_both}** both" if n_both else "") + "."]
+    if counted_only_ids:
+        n_counted = len(counted_only_ids)
+        parts.append(f"**{n_counted}** more {_vb(n_counted, 'records', 'record')} a *number* "
+                     f"of user projects under **Came from (n)** without listing which ones, so "
+                     f"{_vb(n_counted, 'it counts', 'they count')} toward the headline tile "
+                     f"above but {_vb(n_counted, 'has', 'have')} no id to draw a bar from "
+                     f"(type the ids on the development's own card and "
+                     f"{_vb(n_counted, 'it joins', 'they join')} this chart).")
     if n_absent > 0:
         tail = (f" -- {absent_constant} of those {_vb(absent_constant, 'is', 'are')} "
                 f"constant-use, which the workbook's own convention leaves uncounted on "
                 f"purpose, leaving "
                 f"**{n_absent - absent_constant}** with reuse genuinely unrecorded so far"
                 if absent_constant else "")
-        parts.append(f"Nothing is recorded in either direction for the other "
+        parts.append(f"Nothing at all is recorded in either direction for the remaining "
                      f"**{n_absent}**{tail}.")
     return " ".join(parts)
 
