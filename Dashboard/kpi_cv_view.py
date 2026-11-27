@@ -259,11 +259,12 @@ def current_role(metrics, outputs, format_days, heading="Current role"):
         stat(value=totals["delivered"],
              label=f"projects delivered with a final report since "
                    f"{totals['since'].strftime('%b %Y') if totals.get('since') is not None else '—'}"
-                   f" ({latest['delivered']} so far in {latest['label']})"),
+                   f" ({latest['delivered']} so far in {latest['label']}) · "
+                   f"{totals['delivered']}/{totals['projects_total']} of total"),
         stat(value=totals["consulting"],
              label=f"consulting projects · {totals['meetings']} consultation meetings"),
-        stat(value=_arrow([p["groups"] for p in oldest_first]),
-             label=f"research groups engaged ({_arrow([p['label'] for p in oldest_first])})"),
+        stat(value=totals["groups"],
+             label=f"research groups engaged ({latest['groups']} this year)"),
         stat(value=_arrow([round(p["median_working_days"]) for p in oldest_first
                            if p["median_working_days"] is not None], suffix="days"),
              label="typical time to deliver: from data in hand to final report sent"),
