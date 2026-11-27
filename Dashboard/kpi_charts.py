@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 from kpi_data import (
     BASELINE, FINISHED_COLOR, GAIN_ADA_OUTPUT_LEVELS, GAIN_AUDIENCE_FLAGS, GAIN_GROUPS,
     GAIN_STATE_LABELS, GRID, INK, MIN_DRAWN_MINUTES, MUTED,
+    pack_lanes,
     RECEIVED_COLOR, TL_BASELINE, TL_CRITICAL, TL_GOOD, TL_GRID, TL_INK_MUTED, TL_INK_PRIMARY,
     TL_INK_SECONDARY, TL_PALETTE, TL_PALETTE_DARK, TL_SURFACE, WORKLOAD_COLOR,
     _name_variants, effective_received_date, effective_workload_start, format_hm,
@@ -2921,19 +2922,28 @@ DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 # side-by-side blocks are separated by surface rather than by touching edges.
 COLUMN_WIDTH = 0.88
 LANE_GAP = 0.04
+# The planned wash sits a touch wider than the tracked blocks, so a tracked stretch always
+# reads as sitting ON a calendar event rather than beside it.
+PLANNED_WIDTH = 0.94
 # A block shorter than this many minutes gets no inline label -- there is no room for text
 # that isn't clipped, and the tooltip carries it instead.
 LABEL_MIN_MINUTES = 25
 
 
+def _truncate(text, max_chars):
+    """Cut a block label to what its lane can hold. Narrower lanes get shorter labels rather
+    than labels that get hidden for not fitting -- half a title beats no title."""
+    text = str(text or "").strip()
+    if not text or len(text) <= max_chars:
+        return text
+    return text[:max(max_chars - 1, 1)].rstrip() + "…"
+
+
 def _calendar_label(row, max_chars):
-    """What a block says on its face: the description if there is one, else what the entry
-    was filed under. Truncated to what the lane can hold rather than left to overflow."""
+    """What a tracked block says on its face: the description if there is one, else what the
+    entry was filed under."""
     text = str(row.get("description") or "").strip() or str(row.get("project") or "").strip()
-    text = text or str(row.get("major_task") or "").strip()
-    if not text:
-        return ""
-    return text if len(text) <= max_chars else text[:max_chars - 1].rstrip() + "…"
+    return _truncate(text or str(row.get("major_task") or "").strip(), max_chars)
 
 
 def _add_planned_layer(fig, planned):
@@ -2941,23 +2951,36 @@ def _add_planned_layer(fig, planned):
     to be, with what it actually was drawn on top.
 
     Deliberately not a palette hue: planned time isn't another category, and giving it one
-    would say it belongs in the same comparison as Projects and ADAorg. It gets ink at low
-    opacity and the full column width, so a tracked block always reads as sitting on it."""
+    would say it belongs in the same comparison as Projects and Admin. It gets ink at low
+    opacity, so a tracked block always reads as sitting on top of it.
+
+    Overlapping events are lane-packed exactly like tracked stretches, by the same function.
+    A double-booked hour is common in a real calendar -- a group meeting and a photo call at
+    once -- and stacking two washes leaves the lower one's title painted over by the upper
+    one's block. An event that overlaps nothing still gets the whole column."""
     if not planned:
         return
+    packed = pack_lanes(pd.DataFrame(planned))
+    lane_width = PLANNED_WIDTH / packed["lanes"].clip(lower=1)
     wash, edge = _rgba(TL_INK_SECONDARY, 0.13), _rgba(TL_INK_SECONDARY, 0.40)
     fig.add_trace(go.Bar(
-        x=[b["day"] for b in planned],
-        base=[b["start_min"] for b in planned],
-        y=[max(b["end_min"] - b["start_min"], MIN_DRAWN_MINUTES) for b in planned],
-        offset=-0.46, width=0.92,
+        x=packed["day"],
+        base=packed["start_min"],
+        y=(packed["end_min"] - packed["start_min"]).clip(lower=MIN_DRAWN_MINUTES),
+        offset=-PLANNED_WIDTH / 2 + packed["lane"] * lane_width,
+        width=(lane_width - LANE_GAP).clip(lower=0.04),
         name="Planned (calendar)", legendgroup="__planned__",
         marker=dict(color=wash, cornerradius=3, line=dict(color=edge, width=1)),
-        text=[b["title"] if b["end_min"] - b["start_min"] >= LABEL_MIN_MINUTES else ""
-              for b in planned],
+        # Truncated to what the lane can hold, the same way a tracked block's label is. Left
+        # full, a half-width lane fits no title at all and uniformtext hides both of them --
+        # which is how a double-booked hour ends up with two anonymous grey boxes.
+        text=[_truncate(row["title"], int(26 / max(int(row["lanes"]), 1)))
+              if row["end_min"] - row["start_min"] >= LABEL_MIN_MINUTES else ""
+              for _, row in packed.iterrows()],
         textposition="inside", insidetextanchor="start",
         insidetextfont=dict(size=10, color=TL_INK_SECONDARY),
-        hovertext=[f"<b>{b['title']}</b><br>calendar · {format_hm(b['hours'])}" for b in planned],
+        hovertext=[f"<b>{row['title']}</b><br>calendar · {format_hm(row['hours'])}"
+                   for _, row in packed.iterrows()],
         hoverinfo="text",
     ))
 
