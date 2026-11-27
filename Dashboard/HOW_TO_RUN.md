@@ -229,6 +229,12 @@ This only works while:
 
 ## 3. Read-only link (view-only, no editing controls)
 
+**The Time Tracker is deliberately absent from both kinds of sharing.** It is not in the
+exported snapshot — `export_snapshot.py` builds its own fixed list of tabs and emits static
+HTML with no editing controls in it at all. And `?readonly=true` doesn't offer the page
+either: a stopwatch with every control hidden is a blank page, so the router leaves it out
+of the sidebar entirely. A test asserts both.
+
 Append `?readonly=true` to any page's URL, e.g.:
 
 ```
@@ -332,6 +338,7 @@ want (weekly, daily, ...). A few things worth knowing:
 | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Week tab's time log table                                            | `Data/track_time.csv`                                                                                                |
 | Time Tracker → clicking a block on the calendar (Save / Delete / "start a new timer like this") | `Data/time_entries.csv`. Clicking a grey *calendar* block offers to track the meeting instead — there is no Save on one, because the dashboard only ever reads a calendar. |
+| Time Tracker → "📌 Which projects the pickers offer" | `Data/tracker_prefs.json` — the pinned list and the hide-finished toggle. Finished means the project tracker gave it a Closing Day. |
 | Time Tracker → ▶ Start / ⏹ Stop / 🗑 Discard, the Entries table, "➕ Add an entry by hand" | `Data/time_entries.csv` (one row per stretch; a blank `end` is the timer still running). Any brand-new tag typed in also goes to `Data/custom_tags.json`. |
 | Time Tracker → "⬆ Send this week to the time log"                   | `Data/track_time.csv` — the **only** place the tracker touches the time log. One row per project / category / major task per week: a matching row is overwritten in place, an unmatched one is appended, everything else left alone. Previewed and editable before it writes; pushing a week twice changes nothing. |
 | Time Tracker → away prompt and ⚙ Away detection                     | `Data/time_entries.csv` for the split entries, plus the watcher's own record (watch/idle spans, the threshold, what you've already dismissed) in your user app-data folder — machine-local, never in the project folder. Deleting it loses nothing but the ability to ask about stretches already past. |

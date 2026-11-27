@@ -42,7 +42,11 @@ pg = st.navigation({
         st.Page("pages/7_CV.py", title="CV", icon=":material/badge:"),
     ],
     "Data": [
-        st.Page("pages/8_Time_Tracker.py", title="Time Tracker", icon=":material/timer:"),
+        # The Time Tracker is a stopwatch and nothing else: with every editing control hidden
+        # it is a blank page, so a read-only viewer is not offered it at all. It is also
+        # absent from the exported snapshot, which builds its own fixed list of tabs.
+        *([] if st.session_state.get("readonly", False) else
+          [st.Page("pages/8_Time_Tracker.py", title="Time Tracker", icon=":material/timer:")]),
         st.Page("pages/4_Add_Data.py", title="Add Data", icon=":material/edit_note:"),
     ],
 })

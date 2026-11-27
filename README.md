@@ -187,6 +187,16 @@ together instead of being scattered through one flat list.
   "start a new timer like this". Clicking a grey calendar block offers to track that
   meeting instead; the dashboard never edits a calendar.
 
+  **📌 Pinned projects.** Most trackers end up mostly closed projects, so an alphabetical
+  picker is a long list of wrong answers above the few right ones. Pin the ones you're on
+  and they sit at the top of every project picker with a 📌; projects the tracker has given
+  a **Closing Day** drop out. Nothing is unreachable: every picker takes a typed tag, a
+  pinned project stays even if it's finished, and the tag a row already holds never
+  vanishes from that row's own box. Both settings live in `Data/tracker_prefs.json`.
+
+  The Time Tracker is **not** in the exported snapshot and is **not** offered under
+  `?readonly=true` — a stopwatch with every control hidden is a blank page.
+
   `Data/time_entries.csv` is *not* the time log: it is the other half of it. `track_time.csv`
   is one row per project/category/major task **per week**, which is the right shape to report
   and a hopeless shape to record in; the tracker holds the stretches, and **⬆ Send this week
@@ -237,6 +247,7 @@ tied to its own institution's fiscal calendar — see the note below.)
 | `Data/publications.json` | Publications/preprints tagged by related project (source of truth), mirrored to `Publications.xlsx` on every save. |
 | `Data/cv_outputs.json` | Courses taken and taught, conference contributions, juries and outreach, per reporting period (source of truth), mirrored to `CV_Outputs.xlsx` on every save. A record's *kind* is what groups it on the page. |
 | `Data/cv_data.json` | The CV's own content — roles and bullets, education, publications, conferences, teaching, courses, skills, awards, profiles (source of truth), mirrored to `cv_data.xlsx` on every save. Holds **no** numbers about the current role on purpose: those are exactly what goes stale in a written CV, so the CV page computes them from the live files instead. |
+| `Data/tracker_prefs.json` | Which projects are pinned to the top of the Time Tracker's pickers, and whether finished ones are hidden. Deliberately not inside `custom_tags.json`: every caller of `add_custom_tags` rewrites that file from the three tag kinds alone, so anything else kept there would be dropped the next time a tag was typed. |
 | `Data/custom_tags.json` | Remembers new dropdown options until they're used in a saved row. |
 | `Data/tools.xlsx` | Tools/automations inventory. |
 | `Data/project_pause_notes.json` | Per-pause notes and "forgive" flags on the turnaround chart (Projects Review) — a forgiven pause's days are excluded from that project's turnaround medians. |

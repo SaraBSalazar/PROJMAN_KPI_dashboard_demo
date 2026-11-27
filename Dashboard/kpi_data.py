@@ -501,8 +501,73 @@ def build_project_lookup(periods, load_projects_fn=load_projects):
                 continue  # a newer period already claimed this tag; keep its info
             desc = row.get("Short Description") if has_desc else None
             desc = str(desc).strip() if pd.notna(desc) and str(desc).strip().lower() != "nan" else ""
-            lookup[key] = {"description": desc, "period": period["label"]}
+            # A Closing Day is the tracker's own statement that a project is done -- the same
+            # column year_at_a_glance counts as "concluded". Carried here so a dropdown can
+            # put finished work out of the way without asking the workbook a second time.
+            closed = row.get("Closing Day") if "Closing Day" in projects.columns else None
+            lookup[key] = {"description": desc, "period": period["label"],
+                           "finished": bool(pd.notna(closed))}
     return lookup
+
+
+def finished_projects(project_lookup):
+    """The tags the tracker says are closed, upper-cased the way the lookup keys them."""
+    return {tag for tag, info in (project_lookup or {}).items() if info.get("finished")}
+
+
+# --- Which projects sit at the top of a dropdown ------------------------------------------
+# Small enough to live beside custom_tags.json, but deliberately NOT inside it: every caller
+# of add_custom_tags rewrites that file from load_custom_tags()'s output, which only carries
+# the five tag kinds, so anything else stored there would be dropped the next time a tag was
+# typed.
+TRACKER_PREFS_PATH = DATA_DIR / "tracker_prefs.json"
+
+
+def load_tracker_prefs():
+    """{"pinned_projects": [...], "hide_finished": bool}. A missing or unreadable file is
+    "no preferences yet", never an error -- this only reorders a list."""
+    prefs = {"pinned_projects": [], "hide_finished": True}
+    try:
+        data = json.loads(TRACKER_PREFS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return prefs
+    if isinstance(data, dict):
+        pinned = data.get("pinned_projects")
+        if isinstance(pinned, list):
+            prefs["pinned_projects"] = [str(v).strip() for v in pinned if str(v).strip()]
+        prefs["hide_finished"] = bool(data.get("hide_finished", True))
+    return prefs
+
+
+def save_tracker_prefs(pinned_projects=None, hide_finished=None):
+    prefs = load_tracker_prefs()
+    if pinned_projects is not None:
+        prefs["pinned_projects"] = [str(v).strip() for v in pinned_projects if str(v).strip()]
+    if hide_finished is not None:
+        prefs["hide_finished"] = bool(hide_finished)
+    TRACKER_PREFS_PATH.write_text(json.dumps(prefs, indent=2, ensure_ascii=False),
+                                  encoding="utf-8")
+    return prefs
+
+
+def order_project_options(options, pinned=(), finished=(), hide_finished=True, keep=()):
+    """Project tags in the order a dropdown should offer them: pinned first, then the rest,
+    with finished ones dropped.
+
+    `keep` is whatever must stay selectable whatever the rules say -- the value a row already
+    holds, above all. A dropdown that quietly drops the tag its own row is set to would
+    either show a blank where a project was, or re-save the row as unfiled.
+
+    A pinned project is never hidden for being finished: pinning is a deliberate act and
+    outranks the tracker's own bookkeeping. Hidden tags stay typeable, since every one of
+    these dropdowns accepts a new option -- they are out of the list, not out of reach."""
+    pinned_set = [p for p in dict.fromkeys(pinned) if p in set(options)]
+    finished_set = {str(f).upper() for f in finished}
+    keep_set = {str(k).strip() for k in keep if str(k).strip()}
+    rest = [o for o in options
+            if o not in set(pinned_set)
+            and not (hide_finished and str(o).upper() in finished_set and o not in keep_set)]
+    return pinned_set + rest
 
 
 def project_lookup_label(tag, project_lookup):

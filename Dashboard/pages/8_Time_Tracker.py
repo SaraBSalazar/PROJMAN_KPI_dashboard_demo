@@ -115,6 +115,24 @@ for field, key in TAG_FIELDS.items():
     options[key] = options[key] + extra  # appended, so the ordered category list stays ordered
 
 
+# Pinned first, finished dropped: with 23 projects in the tracker and 20 of them closed, an
+# unordered list is twenty wrong answers above the three right ones. Hidden is not gone --
+# every one of these dropdowns accepts a typed option, so a closed project is still reachable
+# by name, and `keep` guarantees the tag a row already holds never vanishes from its own box.
+PREFS = kd.load_tracker_prefs()
+FINISHED_PROJECTS = kd.finished_projects(kcache.build_project_lookup())
+PINNED = [p for p in PREFS["pinned_projects"] if p in set(options["projects"])]
+
+
+def project_options(keep=()):
+    return kd.order_project_options(options["projects"], PINNED, FINISHED_PROJECTS,
+                                    PREFS["hide_finished"], keep)
+
+
+def pin_label(tag):
+    return f"📌 {tag}" if tag in set(PINNED) else tag
+
+
 def extend_palette(base_colors, names):
     """Keep every colour the rest of the dashboard already uses for these values, and give
     anything the tracker knows about but the time log doesn't a palette slot the log isn't
@@ -270,8 +288,9 @@ def render_block_editor(selected, events):
                        "This is where one becomes real tracked time — and it's still an "
                        "ordinary entry afterwards, editable and deletable like any other.")
             t1, t2, t3 = st.columns(3)
-            p = t1.selectbox("Project", options["projects"], index=None, accept_new_options=True,
-                             key=f"tt_sel_project_{ident}", placeholder="pick or type")
+            p = t1.selectbox("Project", project_options(), index=None, accept_new_options=True,
+                             key=f"tt_sel_project_{ident}", format_func=pin_label,
+                             placeholder="pick or type")
             c = t2.selectbox("Category", options["categories"], index=None, accept_new_options=True,
                              key=f"tt_sel_category_{ident}", placeholder="pick or type")
             t = t3.selectbox("Major task", options["major_tasks"], index=None,
@@ -343,10 +362,11 @@ def render_block_editor(selected, events):
             n5.caption("⚠️ That would cross midnight — type the time in instead.")
 
         g1, g2, g3 = st.columns(3)
+        project_choices = project_options(keep=[row["project"]])
         sel_project = g1.selectbox(
-            "Project", options["projects"], key=f"tt_sel_e_project_{ident}", accept_new_options=True,
-            index=options["projects"].index(row["project"]) if row["project"] in options["projects"] else None,
-            placeholder="pick or type")
+            "Project", project_choices, key=f"tt_sel_e_project_{ident}", accept_new_options=True,
+            index=project_choices.index(row["project"]) if row["project"] in project_choices else None,
+            format_func=pin_label, placeholder="pick or type")
         sel_category = g2.selectbox(
             "Category", options["categories"], key=f"tt_sel_e_category_{ident}", accept_new_options=True,
             index=options["categories"].index(row["category"]) if row["category"] in options["categories"] else None,
@@ -490,9 +510,9 @@ if not READONLY:
             c = st.columns([3.2, 1.6, 1.5, 1.6, 1.1], vertical_alignment="bottom")
             desc = c[0].text_input("What are you working on?", key="tt_desc",
                                    placeholder="e.g. rewriting the intake parser")
-            project = c[1].selectbox("Project", options["projects"], index=None,
+            project = c[1].selectbox("Project", project_options(), index=None,
                                      accept_new_options=True, key="tt_project",
-                                     placeholder="pick or type")
+                                     format_func=pin_label, placeholder="pick or type")
             category = c[2].selectbox("Category", options["categories"], index=None,
                                       accept_new_options=True, key="tt_category",
                                       placeholder="pick or type")
@@ -515,6 +535,29 @@ if not READONLY:
     st.caption("Starting a timer stops whatever was running — one at a time, like a stopwatch. "
                "You can leave the tags blank now and fill them in on the table below; only the "
                "ones you eventually fill reach the time log.")
+
+    with st.expander("📌 Which projects the pickers offer"):
+        st.caption(
+            f"The tracker knows **{len(options['projects'])}** project tags and the tracker "
+            f"says **{len(FINISHED_PROJECTS & {o.upper() for o in options['projects']})}** of "
+            "them are closed. Pin the few you're on and they sit at the top of every project "
+            "picker with a 📌; closed ones drop out of the list. Nothing is ever unreachable — "
+            "every picker takes a typed tag, and a tag a row already holds always stays in "
+            "that row's own box.")
+        pin_col, hide_col = st.columns([3, 1.4])
+        picked_pins = pin_col.multiselect(
+            "Pinned projects", options=sorted(set(options["projects"])), default=PINNED,
+            key="tt_pins", placeholder="the ones you're working on now")
+        hide_finished = hide_col.checkbox(
+            "Hide finished projects", value=PREFS["hide_finished"], key="tt_hide_finished",
+            help="A project the tracker has given a Closing Day. Pinned ones stay regardless.")
+        if (list(picked_pins) != PINNED) or (bool(hide_finished) != PREFS["hide_finished"]):
+            try:
+                kd.save_tracker_prefs(pinned_projects=picked_pins, hide_finished=hide_finished)
+            except OSError:
+                st.error("Couldn't save — Data/tracker_prefs.json isn't writable right now.")
+            else:
+                st.rerun()
 
     with st.expander("⚙ Away detection — when should the tracker ask whether you were here?"):
         if not ka.available():
@@ -911,8 +954,12 @@ else:
             **{label: st.column_config.MultiselectColumn(
                 label, options=options[key], accept_new_options=True, color="primary",
                 help="Pick a tag, or type a new one and press Enter. One tag per cell.")
-               for label, key in (("Project", "projects"), ("Category", "categories"),
-                                  ("Major task", "major_tasks"))},
+               for label, key in (("Category", "categories"), ("Major task", "major_tasks"))},
+            "Project": st.column_config.MultiselectColumn(
+                "Project", options=project_options(keep=list(editable["project"])),
+                accept_new_options=True, color="primary",
+                help="Pinned projects first, finished ones left out — type any tag to use it "
+                     "anyway. Manage the list under the timer."),
         },
     )
 
@@ -980,8 +1027,9 @@ else:
             f_end = f3.time_input("End", value=dt.time(10, 0), step=300)
             f_desc = f4.text_input("Description", placeholder="what the stretch was")
             g1_, g2_, g3_ = st.columns(3)
-            f_project = g1_.selectbox("Project", options["projects"], index=None,
-                                      accept_new_options=True, placeholder="pick or type")
+            f_project = g1_.selectbox("Project", project_options(), index=None,
+                                      accept_new_options=True, format_func=pin_label,
+                                      placeholder="pick or type")
             f_category = g2_.selectbox("Category", options["categories"], index=None,
                                        accept_new_options=True, placeholder="pick or type")
             f_task = g3_.selectbox("Major task", options["major_tasks"], index=None,
