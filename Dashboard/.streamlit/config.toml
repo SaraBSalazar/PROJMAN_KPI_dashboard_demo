@@ -5,6 +5,12 @@
 # OS/browser preference (or the app-menu choice) picks between them, and the pages keep
 # re-theming their charts through st.context.theme.type exactly as before.
 
+# Serves Dashboard/static/ at app/static/ -- the CV page's animated ADA mark is an <img>
+# in its own markup rather than an st.image, because st.image hands the file through PIL and
+# a PIL round-trip keeps only the first frame of an animation.
+[server]
+enableStaticServing = true
+
 [theme]
 font = "'IBM Plex Sans', 'Segoe UI', sans-serif"
 headingFont = "'IBM Plex Sans', 'Segoe UI', sans-serif"

@@ -156,6 +156,17 @@ together instead of being scattered through one flat list.
   about: **evolved into** (the parent became it and is usually retired) or **output of** (the
   parent produced it and carries on), drawn as two different arrows. Read-only.
 
+**Profile**
+
+- **CV** — the career record the service sits inside: stat cards, a year-by-year table, then
+  collapsible sections. Everything about the current role — projects delivered, groups
+  reached, tools built, time to deliver, turnaround by size, courses, posters — is computed
+  from the live files on every page load, so the CV can't fall behind the data; everything
+  only a CV knows (roles, education, skills, awards, profiles) lives in `Data/cv_data.json`.
+  **✏️ Edit mode**, top right, opens an editor under each section — each role's summary and
+  bullets as a form, every list as a table — and changes nothing else. The content here is
+  invented, like the rest of the demo data.
+
 **Data**
 
 - **Add Data** — quick-add and edit forms for projects and consultation meetings.
@@ -182,6 +193,7 @@ tied to its own institution's fiscal calendar — see the note below.)
 | `Data/beyond_projects.json` | "Beyond projects" cards (source of truth), mirrored to `Beyond_Projects.xlsx` on every save. |
 | `Data/publications.json` | Publications/preprints tagged by related project (source of truth), mirrored to `Publications.xlsx` on every save. |
 | `Data/cv_outputs.json` | Courses taken and taught, conference contributions, juries and outreach, per reporting period (source of truth), mirrored to `CV_Outputs.xlsx` on every save. A record's *kind* is what groups it on the page. |
+| `Data/cv_data.json` | The CV's own content — roles and bullets, education, publications, conferences, teaching, courses, skills, awards, profiles (source of truth), mirrored to `cv_data.xlsx` on every save. Holds **no** numbers about the current role on purpose: those are exactly what goes stale in a written CV, so the CV page computes them from the live files instead. |
 | `Data/custom_tags.json` | Remembers new dropdown options until they're used in a saved row. |
 | `Data/tools.xlsx` | Tools/automations inventory. |
 | `Data/project_pause_notes.json` | Per-pause notes and "forgive" flags on the turnaround chart (Projects Review) — a forgiven pause's days are excluded from that project's turnaround medians. |
@@ -213,11 +225,12 @@ institution-specific setup:
 - **Generic naming throughout.** The main file is `KPI_Report.py` (not a person's name),
   page titles read "KPI Report", and file-glob patterns look for `KPI*.xlsx` instead of a
   name-prefixed pattern.
-- **No CV page.** The private original has one: a CV laid out from its own content store,
-  with everything about the current role computed live from the tracker. It is one person's
-  record, and the animated mark at the top of it is institutional branding, so neither it
-  nor `kpi_cv_view.py` is carried over here. The Publications & Courses page is — what it
-  logs is exactly what such a page would read from.
+- **The CV is a made-up person.** The CV page itself is the same code as the private
+  original, but `Data/cv_data.json` here is invented — "Alex Rivera (example)", Example
+  University, example papers — written by `generate_demo_data.py` like every other demo
+  file. The private version also opens on its CV and shows an animated institutional mark
+  beside the name; this one lands on Overview and ships no mark (drop `logo.gif` into
+  `Dashboard/static/` and it appears).
 - **`publish_snapshot.ps1` takes parameters instead of hardcoded paths.** The private
   original hardcodes one person's Python install, Claude CLI path, and private artifact
   link as defaults so its scheduled task runs unmodified. This copy ships with no

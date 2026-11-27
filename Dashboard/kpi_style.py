@@ -7,7 +7,27 @@ pill-style in-page navigation, and heading rhythm -- plus the small page helpers
 anchor, page_nav) that every page shares. Call inject() once per page, right after
 st.set_page_config, with the same dark flag handed to kpi_charts.set_theme."""
 
+from pathlib import Path
+
 import streamlit as st
+
+# Images that belong to the app itself (not exported charts, which live in ../Images). The
+# demo ships none: the CV page asks for a mark by name and simply leaves it out when the
+# file isn't there, so dropping one in is all it takes. Streamlit serves this folder at
+# app/static/<name> (enableStaticServing in .streamlit/config.toml), so pages reference the
+# URL rather than the path -- an <img> keeps an animated GIF animated, st.image does not.
+STATIC = Path(__file__).resolve().parent / "static"
+
+
+def static_url(name):
+    """The served URL for a file in static/, or None when it isn't there."""
+    return f"app/static/{name}" if (STATIC / name).exists() else None
+
+# Same token values as export_snapshot.py's CSS and kpi_charts' light/dark themes.
+LIGHT = dict(card="#ffffff", ink2="#52514e", ink3="#898781", line="#e1e0d9",
+             accent="#1f5c99", accent_soft="#eef3f8")
+DARK = dict(card="#232321", ink2="#d0cec7", ink3="#938f87", line="#3c3b38",
+            accent="#4a84c9", accent_soft="#223042")
 
 # Same token values as export_snapshot.py's CSS and kpi_charts' light/dark themes.
 LIGHT = dict(card="#ffffff", ink2="#52514e", ink3="#898781", line="#e1e0d9",

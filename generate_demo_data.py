@@ -16,6 +16,7 @@ mistaken for a real project.
 """
 
 import json
+import sys
 import random
 from datetime import date, timedelta
 from pathlib import Path
@@ -533,6 +534,229 @@ def build_cv_outputs():
     print(f"wrote {DATA_DIR / 'CV_Outputs.xlsx'}")
 
 
+# --- 4c) CV content: an invented career for the CV page ----------------------------------
+# Every name, place and paper below is made up, in the same "(example)" register as the rest
+# of this file -- the point is to show the page working, not to publish anyone's record. The
+# GIMM/ADA half of that page is never stored anyway: it is computed from the tracker, the
+# tools inventory and the two output stores on every load, so this file holds only the parts
+# a CV knows on its own.
+DEMO_CV_EXPERIENCE = [
+    ("service", "Data Analyst, Advanced Data Analysis group", "Example Institute",
+     "Example City", f"{YEAR - 1}-01", "present",
+     "Embedded analyst supporting research groups across the institute with sequencing, "
+     "imaging and multi-omics data, from raw files to interpretation.",
+     ["Deliver end-to-end analyses for user projects: data processing, cleaning, "
+      "normalisation, differential analysis and visualisation.",
+      "Built and maintain the group's reusable pipelines and the dashboards that track "
+      "the service's own work.",
+      "Consult with researchers on study design and interpretation; write and deliver the "
+      "final report on every project."]),
+    ("postdoc", "Postdoctoral Researcher, Computational Genomics", "Example University",
+     "Example City", f"{YEAR - 4}-09", f"{YEAR - 1}-12",
+     "Moved from bench work to computational analysis of sequencing and proteomics data.",
+     ["Wrote Python and R workflows to integrate sequencing, proteomics and metabolomics "
+      "data in a microbial infection model.",
+      "Mentored two MSc students through their thesis analyses.",
+      "Co-authored three peer-reviewed papers and presented at four conferences."]),
+    ("visiting", "Visiting Researcher, Systems Biology", "Example Institute of Technology",
+     "Another Example City", f"{YEAR - 3}-09", f"{YEAR - 3}-11", "",
+     ["Three-month stay building proteomics analysis skills in Python.",
+      "Started the collaboration that produced the benchmarking paper below."]),
+    ("phd", "PhD Researcher, Molecular Biology", "Example University", "Example City",
+     f"{YEAR - 9}-09", f"{YEAR - 4}-06", "",
+     ["Thesis on stress-response regulation, combining wet-lab work with the first "
+      "sequencing analyses done in the lab.",
+      "Taught practical sessions to around 40 MSc students across four years."]),
+]
+
+DEMO_CV = {
+    "meta": {
+        "What this is": "Invented CV content for the demo's CV page. Nobody's real record: "
+                        "every name, place and output below is made up.",
+        "Not included (comes from the dashboard)": "Everything about the current role -- "
+                                                   "projects delivered, groups reached, time "
+                                                   "to deliver, turnaround by size, tools "
+                                                   "built, courses and posters. Those are "
+                                                   "computed from the live files on every "
+                                                   "page load.",
+        "Join key": "experience_bullets.experience_id -> experience.id",
+        "Ordering": "All lists are newest first. Dates are YYYY or YYYY-MM text.",
+    },
+    "profile": [
+        {"field": "name", "value": "Alex Rivera (example)"},
+        {"field": "role", "value": "Data Analyst · Advanced Data Analysis · Example Institute"},
+        {"field": "email", "value": "alex.rivera@example.org"},
+        {"field": "about", "value":
+            "Data analyst with 10+ years in research across genomics, proteomics and imaging. "
+            "I turn complex datasets into answers for researchers: end-to-end analysis, "
+            "reusable Python/R pipelines and clear reporting. I also design and teach "
+            "practical data-analysis courses. Author of 6 peer-reviewed articles, 2 as first "
+            "author. (Invented demo content.)"},
+    ],
+    "cv_stats": [
+        {"section": "Institutional experience", "key": "years_research", "value": "10+",
+         "label": f"years in research (since {YEAR - 10})"},
+        {"section": "Institutional experience", "key": "students_taught", "value": "60+",
+         "label": "students taught across 3 courses"},
+        {"section": "Institutional experience", "key": "courses_designed", "value": 1,
+         "label": "course designed from scratch: Introduction to reproducible analysis"},
+        {"section": "Institutional experience", "key": "students_mentored", "value": 4,
+         "label": "BSc/MSc students informally mentored"},
+        {"section": "Institutional experience", "key": "thesis_juries", "value": 1,
+         "label": "MSc thesis jury (main arguer)"},
+        {"section": "Institutional experience", "key": "institutions", "value": 3,
+         "label": "institutions in 2 countries (both invented)"},
+        {"section": "Specific expertise", "key": "data_layers", "value": 4,
+         "label": "data layers analysed, and integrated across layers: sequencing, "
+                  "proteomics, metabolomics, imaging"},
+    ],
+    "experience": [
+        {"id": eid, "title": title, "organisation": org, "location": loc, "start": start,
+         "end": end, "date_note": "", "lead": lead}
+        for eid, title, org, loc, start, end, lead, _ in DEMO_CV_EXPERIENCE
+    ],
+    "experience_bullets": [
+        {"experience_id": eid, "order": i, "text": text}
+        for eid, _, _, _, _, _, _, bullets in DEMO_CV_EXPERIENCE
+        for i, text in enumerate(bullets, start=1)
+    ],
+    "publications": [
+        {"title": "A multiomics pipeline for routine lipidomics QC",
+         "venue": "Journal of Open Bioinformatics (example)", "year": YEAR, "type": "article",
+         "first_author": True, "doi": "", "url": "https://example.org/jobi/example-lipidomics-qc"},
+        {"title": "Benchmarking structural variant callers on facility sequencing data",
+         "venue": "bioRxiv preprint (example)", "year": YEAR, "type": "preprint",
+         "first_author": False, "doi": "", "url": "https://example.org/biorxiv/example"},
+        {"title": "Reporting standards for small data-analysis services",
+         "venue": "Journal of Research Infrastructure (example)", "year": YEAR - 1,
+         "type": "article", "first_author": True, "doi": "", "url": ""},
+        {"title": "Integrated proteomics and metabolomics of a microbial stress response",
+         "venue": "Example Journal of Microbiology", "year": YEAR - 2, "type": "article",
+         "first_author": False, "doi": "", "url": ""},
+        {"title": "A reusable workflow for differential expression in small cohorts",
+         "venue": "Example Methods", "year": YEAR - 3, "type": "article",
+         "first_author": False, "doi": "", "url": ""},
+        {"title": "Transcriptional regulation under acid stress",
+         "venue": "Example Journal of Microbiology", "year": YEAR - 5, "type": "article",
+         "first_author": False, "doi": "", "url": ""},
+    ],
+    "conference_contributions": [
+        {"title": "A reusable QC dashboard for facility sequencing runs",
+         "event": "Example Bioinformatics Open Days", "date": f"{YEAR}-03", "type": "poster",
+         "note": "Corresponding author"},
+        {"title": "What a small data-analysis service can measure about itself",
+         "event": "Example National Bioinformatics Meeting", "date": f"{YEAR}-10",
+         "type": "oral", "note": ""},
+        {"title": "Integrating proteomics and metabolomics in a stress-response model",
+         "event": "Example Systems Biology Conference", "date": f"{YEAR - 2}", "type": "poster",
+         "note": ""},
+        {"title": "Transcriptional regulation under acid stress",
+         "event": "Example Microbiology Congress", "date": f"{YEAR - 5}", "type": "oral",
+         "note": "Best early-career talk"},
+        {"title": "(6 further posters, not listed individually)",
+         "event": "National and international meetings", "date": f"{YEAR - 9}–{YEAR - 3}",
+         "type": "poster", "note": "count only"},
+    ],
+    "teaching": [
+        {"item": "Introduction to reproducible analysis, 2-day module (designed from scratch)",
+         "institution": "Example University", "date": f"{YEAR}-05", "students": "18",
+         "detail": "Project-based, taught in Python."},
+        {"item": "Main arguer, MSc thesis defence on sequencing QC",
+         "institution": "Example University", "date": f"{YEAR}-12", "students": "", "detail": ""},
+        {"item": "Molecular biology, practical sessions",
+         "institution": "Example University", "date": f"{YEAR - 9}–{YEAR - 4} (during PhD)",
+         "students": "40+", "detail": ""},
+    ],
+    "education": [
+        {"degree": "PhD in Molecular Biology", "institution": "Example University",
+         "years": f"{YEAR - 9}–{YEAR - 4}", "grade": "With distinction",
+         "thesis": "Thesis on transcriptional regulation of the microbial stress response"},
+        {"degree": "MSc in Biotechnology", "institution": "Example University",
+         "years": f"{YEAR - 12}–{YEAR - 10}", "grade": "17/20", "thesis": ""},
+        {"degree": "BSc in Biology", "institution": "Example University",
+         "years": f"{YEAR - 15}–{YEAR - 12}", "grade": "15/20", "thesis": ""},
+    ],
+    "courses_certifications": [
+        {"title": "Machine learning for multi-omics integration", "provider": "Example Courses",
+         "date": f"{YEAR}-09", "topics": "machine learning, multi-omics integration, Python"},
+        {"title": "Statistics and data analysis with R", "provider": "Example Training Centre",
+         "date": f"{YEAR}-02", "topics": "R, statistics, data analysis"},
+        {"title": "Research data management, practitioner level", "provider": "Example Institute",
+         "date": f"{YEAR}-06", "topics": "data management, FAIR data"},
+        {"title": "Scientific communication for researchers", "provider": "Example Academy",
+         "date": f"{YEAR - 1}-04", "topics": "scientific communication"},
+        {"title": "Analysis of high-throughput sequencing data", "provider": "Example Courses",
+         "date": f"{YEAR - 3}", "topics": "sequencing data analysis, QC, variant calling"},
+        {"title": "Introduction to Python", "provider": "Example Online School",
+         "date": f"{YEAR - 5}", "topics": "Python basics"},
+    ],
+    "awards": [
+        {"award": "Best talk by an early-career researcher",
+         "event": "Example Microbiology Congress", "year": YEAR - 5},
+    ],
+    "skills": [
+        ("Programming", "Current focus", ["Python (High)", "R (Medium)", "Git", "Linux",
+                                          "Statistics"]),
+        ("Data analysis", "Current focus", ["Sequencing", "Proteomics", "Metabolomics",
+                                            "Imaging", "Multi-omics integration",
+                                            "Normalisation", "Differential analysis",
+                                            "Data visualisation", "Reusable pipelines"]),
+        ("User support and project work", "Current focus", ["Scoping analyses", "Consulting",
+                                                            "Written reports",
+                                                            "Project organisation",
+                                                            "KPI tracking"]),
+        ("Teaching and communication", "Current focus", ["Course design",
+                                                         "Project-based learning",
+                                                         "Practical teaching",
+                                                         "Informal mentoring",
+                                                         "Oral and poster presentations"]),
+        ("Wet lab", "Earlier work", ["Molecular biology", "Cloning", "RT-qPCR",
+                                     "Protein purification", "Microbial culture"]),
+    ],
+    "skill_matrix": [
+        ("User support and consulting", "not used", "not used", "used"),
+        ("Pipeline and tool building", "not used", "used", "used"),
+        ("Python", "basic", "used", "used"),
+        ("R", "not used", "used", "used"),
+        ("Multi-omics integration", "not used", "used", "used"),
+        ("Teaching and mentoring", "used", "used", "used"),
+        ("Sequencing analysis", "used", "used", "not used"),
+        ("Wet lab and microbiology", "used", "not used", "not used"),
+    ],
+    "volunteering_languages": [
+        {"item": "Local science fair: ran a hands-on data-analysis stand for school students",
+         "date": f"{YEAR - 1}-05"},
+        {"item": "Example language: native · English: advanced (C1)", "date": ""},
+    ],
+    "profiles_ids": [
+        {"name": "ORCID", "id": "0000-0000-0000-0000", "url": "https://orcid.org/0000-0000-0000-0000"},
+        {"name": "GitHub", "id": "example-analyst", "url": "https://github.com/example-analyst"},
+    ],
+}
+
+
+def build_cv_data():
+    """Write the invented CV content the CV page reads (and its Excel mirror)."""
+    cv = dict(DEMO_CV)
+    cv["skills"] = [{"area": area, "status": status, "item": item}
+                    for area, status, items in DEMO_CV["skills"] for item in items]
+    eras = (f"PhD era {YEAR - 9}–{YEAR - 4}", f"Postdoc {YEAR - 4}–{YEAR - 1}",
+            f"Service {YEAR - 1}–now")
+    cv["skill_matrix"] = [dict(zip(("skill",) + eras, row)) for row in DEMO_CV["skill_matrix"]]
+
+    path = DATA_DIR / "cv_data.json"
+    path.write_text(json.dumps(cv, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"wrote {path}")
+
+    # The mirror is written by the app's own exporter, so the demo file matches what a save
+    # would produce rather than a second, drifting implementation of the same layout.
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "Dashboard"))
+    import kpi_data as kd
+
+    kd.export_cv_to_excel(cv)
+    print(f"wrote {DATA_DIR / 'cv_data.xlsx'}")
+
+
 # --- 5) Tools & AI Skills inventory ------------------------------------------------------
 TOOLS = [
     ("QC Dashboard", "Adaptation of the internal pipeline into a facility-specific QC dashboard.",
@@ -882,7 +1106,8 @@ def build_empty(year=None):
     for stray in ("special_project_tasks.json", "Special_Projects_Tasks.xlsx",
                   "beyond_projects.json", "Beyond_Projects.xlsx",
                   "publications.json", "Publications.xlsx",
-                  "cv_outputs.json", "CV_Outputs.xlsx", "KPI_2025.xlsx"):
+                  "cv_outputs.json", "CV_Outputs.xlsx",
+                  "cv_data.json", "cv_data.xlsx", "KPI_2025.xlsx"):
         p = DATA_DIR / stray
         if p.exists():
             p.unlink()
@@ -913,6 +1138,7 @@ if __name__ == "__main__":
         build_beyond_projects()
         build_publications()
         build_cv_outputs()
+        build_cv_data()
         build_tools()
         build_expected_gains()
         build_custom_tags()

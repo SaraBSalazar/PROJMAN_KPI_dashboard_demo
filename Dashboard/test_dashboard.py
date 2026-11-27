@@ -30,6 +30,7 @@ PAGES = [
     "pages/4_Add_Data.py",
     "pages/5_Gains.py",
     "pages/6_Publications_Courses.py",
+    "pages/7_CV.py",
 ]
 
 

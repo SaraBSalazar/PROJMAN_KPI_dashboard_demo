@@ -166,6 +166,17 @@ def meeting_field_options(periods, col):
 
 
 @st.cache_data(show_spinner=False)
+def _load_cv(mtime_key):
+    return kd.load_cv()
+
+
+def load_cv():
+    """The CV content store. st.cache_data hands back a copy per caller, so the CV page is
+    free to mutate what it gets before saving it -- which is exactly what its editors do."""
+    return _load_cv(_mtime(kd.CV_PATH))
+
+
+@st.cache_data(show_spinner=False)
 def _load_cv_outputs(mtime_key):
     return kd.load_cv_outputs()
 
@@ -181,3 +192,22 @@ def _load_publications(mtime_key):
 
 def load_publications():
     return _load_publications(_mtime(kd.PUBLICATIONS_PATH))
+
+
+@st.cache_data(show_spinner=False)
+def _cv_role_metrics(period_key, mtime_key):
+    # Reads every period workbook, the tools inventory, the time log, the pause notes and
+    # both output stores, then runs the turnaround maths per period -- by far the heaviest
+    # thing the CV page asks for, and all of it keyed on the files it actually reads, so a
+    # rerun that changed none of them costs nothing.
+    return kd.cv_role_metrics(
+        kd.discover_periods(), tools_df=kd.load_tools(), timelog=kd.load_timelog(dark=False)[0],
+        pause_notes=kd.load_pause_notes(), all_pubs=kd.load_publications(),
+        all_outputs=kd.load_cv_outputs(),
+    )
+
+
+def cv_role_metrics():
+    mtime_key = (_mtime(kd.TOOLS_PATH), _mtime(kd.TIMELOG_PATH), _mtime(kd.PAUSE_NOTES_PATH),
+                 _mtime(kd.PUBLICATIONS_PATH), _mtime(kd.CV_OUTPUTS_PATH))
+    return _cv_role_metrics(_period_files_key(), mtime_key)

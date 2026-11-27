@@ -27,6 +27,9 @@ pages under section headings instead of listing them flat:
   deliver, and how much of that is **Delivered** (finished, gains banked), **In use &
   developing** (not finished, but already serving a real user project, or having spawned
   another development, or a tool that isn't deprecated), or still **Potential**)
+- **Profile** — CV (`pages/7_CV.py` — the career record, with everything about the current
+  role computed from the live files rather than written down, and every section editable
+  behind the **✏️ Edit mode** toggle)
 - **Data** — Add Data (`pages/4_Add_Data.py`)
 
 Sidebar icons are Material Symbols (`":material/name:"`), which stay monochrome and take the
@@ -108,6 +111,46 @@ python generate_demo_data.py
 
 Since this is a fresh clone, any error here is either a real bug or a genuinely missing
 file, not an artifact of wherever it was developed.
+
+## The CV page and where its numbers come from
+
+The CV page reads as a CV — stat cards, a year-by-year table, then collapsible Details
+sections — built as live markup by `kpi_cv_view.py` and wearing the dashboard's own palette
+and typography. A mark can sit beside the name: put `logo.gif` (and optionally
+`logo_dark.gif`) in `Dashboard/static/` and it appears; the demo ships none.
+
+**✏️ Edit mode** (top right) is the only thing that changes the page: on, an editor appears
+under each section — each role's summary line and bullets as a form, every list section as
+a table — and the view itself stays exactly where it was. Off, there is nothing to click.
+
+It mixes two kinds of content on purpose, and the line between them matters:
+
+- **What the dashboard already knows** — projects delivered, research groups, tools and AI
+  skills built, time to deliver, turnaround by project size, publications and courses
+  logged. None of this is stored in the CV. It is recomputed on every load by
+  `kd.cv_role_metrics()` from the period workbooks, the time log, `tools.xlsx` and the two
+  output stores, so the CV cannot fall behind the tracker. `cv_data.json`'s own README says
+  the same thing from the other side: those figures are deliberately *not* in the file.
+  (In this demo they come from invented data, like everything else here.)
+- **What only the CV knows** — roles, education, skills, awards, profiles. That is
+  `Data/cv_data.json`, editable on the page, mirrored to `cv_data.xlsx`.
+
+Publications, courses, teaching and conference contributions sit across both: the lifetime
+list lives in the CV store, and anything logged against a reporting period on the
+Publications & Courses page is folded into the matching CV section at display time, tagged
+with its period and project tags (the blue "ADA 2025–2026" mark). Matching is on title (and
+venue, for conferences), ignoring case and punctuation — so logging a paper that is already
+on the CV annotates that line instead of adding a second one. Nothing is copied between the
+stores; each stays the single source of truth for what it holds.
+
+If you keep a standalone, hand-built CV page of your own at `Data/CV_dashboard.html` — one
+that marks the dashboard's figures with `data-metric` spans fed by a single JSON block — an
+**⬇️ export** button appears at the foot of the page: it fills those in with what the tracker
+says right now and hands back a copy to send or print, leaving the file in `Data/` untouched.
+Without that file there is simply no export section.
+
+The CV is **not** in the exported snapshot in `Share/`. A CV is personal, so it stays in the
+live app only.
 
 ## 2. Sharing with someone on the same WiFi/network
 
@@ -249,6 +292,7 @@ want (weekly, daily, ...). A few things worth knowing:
 | Projects Review → "Beyond projects" cards                           | `Data/beyond_projects.json` (source of truth, mirrored to `Data/Beyond_Projects.xlsx` on every save)               |
 | Publications & Courses → "Publications"                              | `Data/publications.json` (source of truth, mirrored to `Data/Publications.xlsx` on every save). This section used to sit on Projects Review, which no longer carries it. |
 | Publications & Courses → courses, teaching & juries, conferences, outreach | `Data/cv_outputs.json` (source of truth, mirrored to `Data/CV_Outputs.xlsx` on every save) — one record per output, with a *kind* that groups it |
+| CV → "✏️ Edit this role" (summary line and bullets), and every section's "✏️ Edit" table | `Data/cv_data.json` (source of truth, mirrored to `Data/cv_data.xlsx` on every save). **The workbook is never read back** — edit the CV on the page, not in Excel, or the next save will overwrite what you typed there. |
 | Week tab → "➕ New tag" (project / category / major task)           | `Data/custom_tags.json` (so new tags stay in the dropdowns across restarts, even before they're used in a saved row) |
 | Tools & AI Skills → "Edit a tool" and the "All tools" table         | `Data/tools.xlsx`                                                                                                    |
 | Projects Review → Turnaround → "⏸ Pauses" note / forgive checkbox  | `Data/project_pause_notes.json` (forgiving a pause subtracts just its days from that project's turnaround figures, rather than excluding the whole project) |

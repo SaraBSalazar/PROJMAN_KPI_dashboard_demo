@@ -38,6 +38,9 @@ pg = st.navigation({
         st.Page("pages/3_Tools.py", title="Tools & AI Skills", icon=":material/handyman:"),
         st.Page("pages/5_Gains.py", title="Gains & Outputs", icon=":material/trending_up:"),
     ],
+    "Profile": [
+        st.Page("pages/7_CV.py", title="CV", icon=":material/badge:"),
+    ],
     "Data": [
         st.Page("pages/4_Add_Data.py", title="Add Data", icon=":material/edit_note:"),
     ],

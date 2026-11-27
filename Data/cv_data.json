@@ -1,0 +1,567 @@
+{
+  "meta": {
+    "What this is": "Invented CV content for the demo's CV page. Nobody's real record: every name, place and output below is made up.",
+    "Not included (comes from the dashboard)": "Everything about the current role -- projects delivered, groups reached, time to deliver, turnaround by size, tools built, courses and posters. Those are computed from the live files on every page load.",
+    "Join key": "experience_bullets.experience_id -> experience.id",
+    "Ordering": "All lists are newest first. Dates are YYYY or YYYY-MM text."
+  },
+  "profile": [
+    {
+      "field": "name",
+      "value": "Alex Rivera (example)"
+    },
+    {
+      "field": "role",
+      "value": "Data Analyst · Advanced Data Analysis · Example Institute"
+    },
+    {
+      "field": "email",
+      "value": "alex.rivera@example.org"
+    },
+    {
+      "field": "about",
+      "value": "Data analyst with 10+ years in research across genomics, proteomics and imaging. I turn complex datasets into answers for researchers: end-to-end analysis, reusable Python/R pipelines and clear reporting. I also design and teach practical data-analysis courses. Author of 6 peer-reviewed articles, 2 as first author. (Invented demo content.)"
+    }
+  ],
+  "cv_stats": [
+    {
+      "section": "Institutional experience",
+      "key": "years_research",
+      "value": "10+",
+      "label": "years in research (since 2015)"
+    },
+    {
+      "section": "Institutional experience",
+      "key": "students_taught",
+      "value": "60+",
+      "label": "students taught across 3 courses"
+    },
+    {
+      "section": "Institutional experience",
+      "key": "courses_designed",
+      "value": 1,
+      "label": "course designed from scratch: Introduction to reproducible analysis"
+    },
+    {
+      "section": "Institutional experience",
+      "key": "students_mentored",
+      "value": 4,
+      "label": "BSc/MSc students informally mentored"
+    },
+    {
+      "section": "Institutional experience",
+      "key": "thesis_juries",
+      "value": 1,
+      "label": "MSc thesis jury (main arguer)"
+    },
+    {
+      "section": "Institutional experience",
+      "key": "institutions",
+      "value": 3,
+      "label": "institutions in 2 countries (both invented)"
+    },
+    {
+      "section": "Specific expertise",
+      "key": "data_layers",
+      "value": 4,
+      "label": "data layers analysed, and integrated across layers: sequencing, proteomics, metabolomics, imaging"
+    }
+  ],
+  "experience": [
+    {
+      "id": "service",
+      "title": "Data Analyst, Advanced Data Analysis group",
+      "organisation": "Example Institute",
+      "location": "Example City",
+      "start": "2024-01",
+      "end": "present",
+      "date_note": "",
+      "lead": "Embedded analyst supporting research groups across the institute with sequencing, imaging and multi-omics data, from raw files to interpretation."
+    },
+    {
+      "id": "postdoc",
+      "title": "Postdoctoral Researcher, Computational Genomics",
+      "organisation": "Example University",
+      "location": "Example City",
+      "start": "2021-09",
+      "end": "2024-12",
+      "date_note": "",
+      "lead": "Moved from bench work to computational analysis of sequencing and proteomics data."
+    },
+    {
+      "id": "visiting",
+      "title": "Visiting Researcher, Systems Biology",
+      "organisation": "Example Institute of Technology",
+      "location": "Another Example City",
+      "start": "2022-09",
+      "end": "2022-11",
+      "date_note": "",
+      "lead": ""
+    },
+    {
+      "id": "phd",
+      "title": "PhD Researcher, Molecular Biology",
+      "organisation": "Example University",
+      "location": "Example City",
+      "start": "2016-09",
+      "end": "2021-06",
+      "date_note": "",
+      "lead": ""
+    }
+  ],
+  "experience_bullets": [
+    {
+      "experience_id": "service",
+      "order": 1,
+      "text": "Deliver end-to-end analyses for user projects: data processing, cleaning, normalisation, differential analysis and visualisation."
+    },
+    {
+      "experience_id": "service",
+      "order": 2,
+      "text": "Built and maintain the group's reusable pipelines and the dashboards that track the service's own work."
+    },
+    {
+      "experience_id": "service",
+      "order": 3,
+      "text": "Consult with researchers on study design and interpretation; write and deliver the final report on every project."
+    },
+    {
+      "experience_id": "postdoc",
+      "order": 1,
+      "text": "Wrote Python and R workflows to integrate sequencing, proteomics and metabolomics data in a microbial infection model."
+    },
+    {
+      "experience_id": "postdoc",
+      "order": 2,
+      "text": "Mentored two MSc students through their thesis analyses."
+    },
+    {
+      "experience_id": "postdoc",
+      "order": 3,
+      "text": "Co-authored three peer-reviewed papers and presented at four conferences."
+    },
+    {
+      "experience_id": "visiting",
+      "order": 1,
+      "text": "Three-month stay building proteomics analysis skills in Python."
+    },
+    {
+      "experience_id": "visiting",
+      "order": 2,
+      "text": "Started the collaboration that produced the benchmarking paper below."
+    },
+    {
+      "experience_id": "phd",
+      "order": 1,
+      "text": "Thesis on stress-response regulation, combining wet-lab work with the first sequencing analyses done in the lab."
+    },
+    {
+      "experience_id": "phd",
+      "order": 2,
+      "text": "Taught practical sessions to around 40 MSc students across four years."
+    }
+  ],
+  "publications": [
+    {
+      "title": "A multiomics pipeline for routine lipidomics QC",
+      "venue": "Journal of Open Bioinformatics (example)",
+      "year": 2025,
+      "type": "article",
+      "first_author": true,
+      "doi": "",
+      "url": "https://example.org/jobi/example-lipidomics-qc"
+    },
+    {
+      "title": "Benchmarking structural variant callers on facility sequencing data",
+      "venue": "bioRxiv preprint (example)",
+      "year": 2025,
+      "type": "preprint",
+      "first_author": false,
+      "doi": "",
+      "url": "https://example.org/biorxiv/example"
+    },
+    {
+      "title": "Reporting standards for small data-analysis services",
+      "venue": "Journal of Research Infrastructure (example)",
+      "year": 2024,
+      "type": "article",
+      "first_author": true,
+      "doi": "",
+      "url": ""
+    },
+    {
+      "title": "Integrated proteomics and metabolomics of a microbial stress response",
+      "venue": "Example Journal of Microbiology",
+      "year": 2023,
+      "type": "article",
+      "first_author": false,
+      "doi": "",
+      "url": ""
+    },
+    {
+      "title": "A reusable workflow for differential expression in small cohorts",
+      "venue": "Example Methods",
+      "year": 2022,
+      "type": "article",
+      "first_author": false,
+      "doi": "",
+      "url": ""
+    },
+    {
+      "title": "Transcriptional regulation under acid stress",
+      "venue": "Example Journal of Microbiology",
+      "year": 2020,
+      "type": "article",
+      "first_author": false,
+      "doi": "",
+      "url": ""
+    }
+  ],
+  "conference_contributions": [
+    {
+      "title": "A reusable QC dashboard for facility sequencing runs",
+      "event": "Example Bioinformatics Open Days",
+      "date": "2025-03",
+      "type": "poster",
+      "note": "Corresponding author"
+    },
+    {
+      "title": "What a small data-analysis service can measure about itself",
+      "event": "Example National Bioinformatics Meeting",
+      "date": "2025-10",
+      "type": "oral",
+      "note": ""
+    },
+    {
+      "title": "Integrating proteomics and metabolomics in a stress-response model",
+      "event": "Example Systems Biology Conference",
+      "date": "2023",
+      "type": "poster",
+      "note": ""
+    },
+    {
+      "title": "Transcriptional regulation under acid stress",
+      "event": "Example Microbiology Congress",
+      "date": "2020",
+      "type": "oral",
+      "note": "Best early-career talk"
+    },
+    {
+      "title": "(6 further posters, not listed individually)",
+      "event": "National and international meetings",
+      "date": "2016–2022",
+      "type": "poster",
+      "note": "count only"
+    }
+  ],
+  "teaching": [
+    {
+      "item": "Introduction to reproducible analysis, 2-day module (designed from scratch)",
+      "institution": "Example University",
+      "date": "2025-05",
+      "students": "18",
+      "detail": "Project-based, taught in Python."
+    },
+    {
+      "item": "Main arguer, MSc thesis defence on sequencing QC",
+      "institution": "Example University",
+      "date": "2025-12",
+      "students": "",
+      "detail": ""
+    },
+    {
+      "item": "Molecular biology, practical sessions",
+      "institution": "Example University",
+      "date": "2016–2021 (during PhD)",
+      "students": "40+",
+      "detail": ""
+    }
+  ],
+  "education": [
+    {
+      "degree": "PhD in Molecular Biology",
+      "institution": "Example University",
+      "years": "2016–2021",
+      "grade": "With distinction",
+      "thesis": "Thesis on transcriptional regulation of the microbial stress response"
+    },
+    {
+      "degree": "MSc in Biotechnology",
+      "institution": "Example University",
+      "years": "2013–2015",
+      "grade": "17/20",
+      "thesis": ""
+    },
+    {
+      "degree": "BSc in Biology",
+      "institution": "Example University",
+      "years": "2010–2013",
+      "grade": "15/20",
+      "thesis": ""
+    }
+  ],
+  "courses_certifications": [
+    {
+      "title": "Machine learning for multi-omics integration",
+      "provider": "Example Courses",
+      "date": "2025-09",
+      "topics": "machine learning, multi-omics integration, Python"
+    },
+    {
+      "title": "Statistics and data analysis with R",
+      "provider": "Example Training Centre",
+      "date": "2025-02",
+      "topics": "R, statistics, data analysis"
+    },
+    {
+      "title": "Research data management, practitioner level",
+      "provider": "Example Institute",
+      "date": "2025-06",
+      "topics": "data management, FAIR data"
+    },
+    {
+      "title": "Scientific communication for researchers",
+      "provider": "Example Academy",
+      "date": "2024-04",
+      "topics": "scientific communication"
+    },
+    {
+      "title": "Analysis of high-throughput sequencing data",
+      "provider": "Example Courses",
+      "date": "2022",
+      "topics": "sequencing data analysis, QC, variant calling"
+    },
+    {
+      "title": "Introduction to Python",
+      "provider": "Example Online School",
+      "date": "2020",
+      "topics": "Python basics"
+    }
+  ],
+  "awards": [
+    {
+      "award": "Best talk by an early-career researcher",
+      "event": "Example Microbiology Congress",
+      "year": 2020
+    }
+  ],
+  "skills": [
+    {
+      "area": "Programming",
+      "status": "Current focus",
+      "item": "Python (High)"
+    },
+    {
+      "area": "Programming",
+      "status": "Current focus",
+      "item": "R (Medium)"
+    },
+    {
+      "area": "Programming",
+      "status": "Current focus",
+      "item": "Git"
+    },
+    {
+      "area": "Programming",
+      "status": "Current focus",
+      "item": "Linux"
+    },
+    {
+      "area": "Programming",
+      "status": "Current focus",
+      "item": "Statistics"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Sequencing"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Proteomics"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Metabolomics"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Imaging"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Multi-omics integration"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Normalisation"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Differential analysis"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Data visualisation"
+    },
+    {
+      "area": "Data analysis",
+      "status": "Current focus",
+      "item": "Reusable pipelines"
+    },
+    {
+      "area": "User support and project work",
+      "status": "Current focus",
+      "item": "Scoping analyses"
+    },
+    {
+      "area": "User support and project work",
+      "status": "Current focus",
+      "item": "Consulting"
+    },
+    {
+      "area": "User support and project work",
+      "status": "Current focus",
+      "item": "Written reports"
+    },
+    {
+      "area": "User support and project work",
+      "status": "Current focus",
+      "item": "Project organisation"
+    },
+    {
+      "area": "User support and project work",
+      "status": "Current focus",
+      "item": "KPI tracking"
+    },
+    {
+      "area": "Teaching and communication",
+      "status": "Current focus",
+      "item": "Course design"
+    },
+    {
+      "area": "Teaching and communication",
+      "status": "Current focus",
+      "item": "Project-based learning"
+    },
+    {
+      "area": "Teaching and communication",
+      "status": "Current focus",
+      "item": "Practical teaching"
+    },
+    {
+      "area": "Teaching and communication",
+      "status": "Current focus",
+      "item": "Informal mentoring"
+    },
+    {
+      "area": "Teaching and communication",
+      "status": "Current focus",
+      "item": "Oral and poster presentations"
+    },
+    {
+      "area": "Wet lab",
+      "status": "Earlier work",
+      "item": "Molecular biology"
+    },
+    {
+      "area": "Wet lab",
+      "status": "Earlier work",
+      "item": "Cloning"
+    },
+    {
+      "area": "Wet lab",
+      "status": "Earlier work",
+      "item": "RT-qPCR"
+    },
+    {
+      "area": "Wet lab",
+      "status": "Earlier work",
+      "item": "Protein purification"
+    },
+    {
+      "area": "Wet lab",
+      "status": "Earlier work",
+      "item": "Microbial culture"
+    }
+  ],
+  "skill_matrix": [
+    {
+      "skill": "User support and consulting",
+      "PhD era 2016–2021": "not used",
+      "Postdoc 2021–2024": "not used",
+      "Service 2024–now": "used"
+    },
+    {
+      "skill": "Pipeline and tool building",
+      "PhD era 2016–2021": "not used",
+      "Postdoc 2021–2024": "used",
+      "Service 2024–now": "used"
+    },
+    {
+      "skill": "Python",
+      "PhD era 2016–2021": "basic",
+      "Postdoc 2021–2024": "used",
+      "Service 2024–now": "used"
+    },
+    {
+      "skill": "R",
+      "PhD era 2016–2021": "not used",
+      "Postdoc 2021–2024": "used",
+      "Service 2024–now": "used"
+    },
+    {
+      "skill": "Multi-omics integration",
+      "PhD era 2016–2021": "not used",
+      "Postdoc 2021–2024": "used",
+      "Service 2024–now": "used"
+    },
+    {
+      "skill": "Teaching and mentoring",
+      "PhD era 2016–2021": "used",
+      "Postdoc 2021–2024": "used",
+      "Service 2024–now": "used"
+    },
+    {
+      "skill": "Sequencing analysis",
+      "PhD era 2016–2021": "used",
+      "Postdoc 2021–2024": "used",
+      "Service 2024–now": "not used"
+    },
+    {
+      "skill": "Wet lab and microbiology",
+      "PhD era 2016–2021": "used",
+      "Postdoc 2021–2024": "not used",
+      "Service 2024–now": "not used"
+    }
+  ],
+  "volunteering_languages": [
+    {
+      "item": "Local science fair: ran a hands-on data-analysis stand for school students",
+      "date": "2024-05"
+    },
+    {
+      "item": "Example language: native · English: advanced (C1)",
+      "date": ""
+    }
+  ],
+  "profiles_ids": [
+    {
+      "name": "ORCID",
+      "id": "0000-0000-0000-0000",
+      "url": "https://orcid.org/0000-0000-0000-0000"
+    },
+    {
+      "name": "GitHub",
+      "id": "example-analyst",
+      "url": "https://github.com/example-analyst"
+    }
+  ]
+}

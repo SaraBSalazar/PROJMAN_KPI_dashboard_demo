@@ -2178,6 +2178,151 @@ def new_publication():
     return {"title": "", "venue": "", "date": "", "url": "", "projects": ""}
 
 
+# --- CV: the career record the service sits inside ------------------------------------------
+# cv_data.json is the source of truth and cv_data.xlsx its Excel mirror -- the same split the
+# beyond-projects cards and publications already use: the dashboard writes the JSON, then
+# rewrites the workbook from it so the content is readable (and printable) outside the app.
+# The workbook is never read back, so hand-editing it is a dead end; the CV page says so, and
+# offers every section as an editable table instead.
+CV_PATH = DATA_DIR / "cv_data.json"
+CV_XLSX_PATH = DATA_DIR / "cv_data.xlsx"
+# No standalone CV page ships with the demo, so the export at the foot of the CV page
+# stays hidden; drop one in under this name and it appears.
+CV_HTML_PATH = DATA_DIR / "CV_dashboard.html"
+
+# Section -> the field order its sheet/table uses. The order matters twice over: it is the
+# column order in the mirror workbook and the column order in the page's editors. A section
+# missing from here still loads -- it just falls back to whatever key order the JSON has.
+CV_SECTIONS = {
+    "profile": ["field", "value"],
+    "cv_stats": ["section", "key", "value", "label"],
+    "experience": ["id", "title", "organisation", "location", "start", "end",
+                   "date_note", "lead"],
+    "experience_bullets": ["experience_id", "order", "text"],
+    "publications": ["title", "venue", "year", "type", "first_author", "doi", "url"],
+    "conference_contributions": ["title", "event", "date", "type", "note"],
+    "teaching": ["item", "institution", "date", "students", "detail"],
+    "education": ["degree", "institution", "years", "grade", "thesis"],
+    "courses_certifications": ["title", "provider", "date", "topics"],
+    "awards": ["award", "event", "year"],
+    "skills": ["area", "status", "item"],
+    "skill_matrix": ["skill"],  # the era columns are discovered from the data, not fixed here
+    "volunteering_languages": ["item", "date"],
+    "profiles_ids": ["name", "id", "url"],
+}
+
+def load_cv():
+    """The CV content store. Always returns every section key (an absent one as an empty
+    list), so callers never have to guard."""
+    cv = {}
+    if CV_PATH.exists():
+        try:
+            cv = json.loads(CV_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            cv = {}
+    cv.setdefault("meta", {})
+    for section in CV_SECTIONS:
+        cv.setdefault(section, [])
+    return cv
+
+
+def cv_section_columns(section, rows):
+    """Declared field order first, then any extra key a row actually carries -- so a field
+    added by hand in the JSON still reaches the mirror and the editor instead of being
+    silently dropped (this is what keeps skill_matrix's era columns working)."""
+    columns = list(CV_SECTIONS.get(section, []))
+    for row in rows:
+        for key in row:
+            if key not in columns:
+                columns.append(key)
+    return columns
+
+
+def export_cv_to_excel(cv):
+    """Mirror cv_data.json into cv_data.xlsx -- a README sheet built from `meta`, then one
+    sheet per section. Rewritten whole on every save: unlike the project tracker there are no
+    formulas in here to flatten, and the file exists to be read, not edited."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "README"
+    ws.append(["topic", "note"])
+    for topic, note in (cv.get("meta") or {}).items():
+        ws.append([topic, note])
+    ws.column_dimensions["A"].width = 44
+    ws.column_dimensions["B"].width = 110
+
+    for section, rows in cv.items():
+        if section == "meta" or not isinstance(rows, list):
+            continue
+        sheet = wb.create_sheet(section[:31])
+        columns = cv_section_columns(section, rows)
+        sheet.append(columns)
+        for row in rows:
+            sheet.append([row.get(col, "") for col in columns])
+        for i, col in enumerate(columns, start=1):
+            widest = max([len(str(col))] + [len(str(r.get(col, ""))) for r in rows])
+            sheet.column_dimensions[openpyxl.utils.get_column_letter(i)].width = min(70, max(12, widest + 2))
+    wb.save(CV_XLSX_PATH)
+
+
+def save_cv(cv, stamp_today=True):
+    """Write the JSON source of truth, then mirror to Excel. Returns a warning string if the
+    mirror couldn't be written (file open in Excel / locked by OneDrive) -- the JSON save
+    still succeeded, so an edit is never lost to a lock."""
+    if stamp_today:
+        cv.setdefault("meta", {})["Updated"] = pd.Timestamp.now().strftime("%Y-%m-%d")
+    CV_PATH.write_text(json.dumps(cv, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        export_cv_to_excel(cv)
+    except PermissionError:
+        return (f"Saved, but couldn't update {CV_XLSX_PATH.name} (close it in Excel to refresh "
+                "the mirror on the next edit).")
+    return None
+
+
+def cv_profile(cv):
+    """The profile section's field/value rows as a plain dict (name, role, email, about)."""
+    return {str(r.get("field", "")): r.get("value", "") for r in cv.get("profile", [])}
+
+
+def set_cv_profile(cv, values):
+    """Write those fields back, keeping any field the page didn't offer and the original
+    row order."""
+    for row in cv.get("profile", []):
+        field = str(row.get("field", ""))
+        if field in values:
+            row["value"] = values[field]
+    known = {str(r.get("field", "")) for r in cv.get("profile", [])}
+    for field, value in values.items():
+        if field not in known:
+            cv.setdefault("profile", []).append({"field": field, "value": value})
+    return cv
+
+
+def cv_bullets_for(cv, experience_id):
+    """One role's bullet texts, in `order`. The join cv_data.json's own README documents:
+    experience_bullets.experience_id -> experience.id."""
+    rows = [r for r in cv.get("experience_bullets", []) if r.get("experience_id") == experience_id]
+    rows.sort(key=lambda r: r.get("order") or 0)
+    return [str(r.get("text", "")) for r in rows]
+
+
+def set_cv_bullets(cv, experience_id, bullets):
+    """Replace one role's bullets wholesale, leaving every other role's untouched and
+    renumbering `order` from 1 -- the editor hands back a block of text, not row ids.
+
+    Rebuilt in experience order so the JSON and its mirror stay grouped by role and readable,
+    rather than drifting into 'every edited role last'."""
+    kept = [r for r in cv.get("experience_bullets", []) if r.get("experience_id") != experience_id]
+    added = [{"experience_id": experience_id, "order": i, "text": text.strip()}
+             for i, text in enumerate(bullets, start=1) if text.strip()]
+    order = {e.get("id"): i for i, e in enumerate(cv.get("experience", []))}
+    rows = kept + added
+    rows.sort(key=lambda r: (order.get(r.get("experience_id"), 99), r.get("order") or 0))
+    cv["experience_bullets"] = rows
+    return cv
+
+
 # --- ADA outputs: publications' siblings, logged per reporting period ----------------------
 # Courses, conference contributions, juries and outreach done in the ADA role. They used to
 # go into the free-form "beyond projects" cards, which can hold the text but not count it;
@@ -2266,6 +2411,91 @@ def cv_outputs_flat(all_outputs, kinds=None, period_label=None):
     return rows
 
 
+def _match_key(*parts):
+    """Loose equality for merging a logged output with its CV entry: case, spacing and
+    punctuation differences shouldn't produce a duplicate line on the CV."""
+    text = " ".join(str(p or "") for p in parts).lower()
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def _merge_cv_rows(cv_rows, ada_rows, key_fields):
+    """Fold `ada_rows` (already converted into a CV section's own field names, each carrying
+    `period` / `projects`) into that section's lifetime list. A row already on the CV is
+    annotated rather than repeated -- the same title at the same venue is the same thing,
+    however it got in -- and anything new is appended.
+
+    Returns a new list and writes nothing: the merge exists for display, so each store stays
+    the single source of truth for what it holds."""
+    merged = [dict(r) for r in cv_rows]
+    index = {_match_key(*(r.get(f) for f in key_fields)): r for r in merged}
+    for row in ada_rows:
+        key = _match_key(*(row.get(f) for f in key_fields))
+        existing = index.get(key)
+        if existing is not None:
+            existing.update({k: v for k, v in row.items()
+                             if k in ("period", "projects", "url") and v})
+            existing["ada"] = True
+        else:
+            new_row = dict(row)
+            new_row["ada"] = True
+            merged.append(new_row)
+            index[key] = new_row
+    return merged
+
+
+def cv_publications(cv, all_pubs):
+    """The CV's lifetime publication list with the per-period ADA publications folded in --
+    each tagged with its reporting period and the project tags it came out of, so the CV and
+    the publications page can never disagree about what was published."""
+    ada = []
+    for pub in cv_outputs_flat(all_pubs):
+        venue = str(pub.get("venue") or "")
+        date = str(pub.get("date") or "")
+        ada.append({
+            "title": pub.get("title", ""), "venue": venue,
+            "year": int(date[:4]) if date[:4].isdigit() else "",
+            "type": "preprint" if "preprint" in venue.lower() else "article",
+            "first_author": "", "doi": "", "url": pub.get("url", ""),
+            "period": pub.get("period", ""), "projects": pub.get("projects", ""),
+        })
+    merged = _merge_cv_rows(cv.get("publications", []), ada, ["title"])
+    merged.sort(key=lambda r: str(r.get("year") or ""), reverse=True)
+    return merged
+
+
+def cv_section_with_outputs(cv, section, all_outputs):
+    """One CV section (courses, teaching, conference contributions, volunteering) with the
+    ADA outputs belonging to it folded in, converted into that section's own field names."""
+    kinds = [k for k, s in CV_OUTPUT_SECTION.items() if s == section]
+    converted = []
+    for row in cv_outputs_flat(all_outputs, kinds=kinds):
+        common = {"period": row.get("period", ""), "projects": row.get("projects", ""),
+                  "url": row.get("url", "")}
+        if section == "courses_certifications":
+            converted.append({"title": row.get("title", ""), "provider": row.get("where", ""),
+                              "date": row.get("date", ""), "topics": row.get("detail", ""),
+                              **common})
+        elif section == "teaching":
+            converted.append({"item": row.get("title", ""), "institution": row.get("where", ""),
+                              "date": row.get("date", ""), "students": row.get("scale", ""),
+                              "detail": row.get("detail", ""), **common})
+        elif section == "conference_contributions":
+            converted.append({"title": row.get("title", ""), "event": row.get("where", ""),
+                              "date": row.get("date", ""),
+                              "type": "poster" if row.get("kind") == "Conference poster" else "oral",
+                              "note": row.get("detail", ""), **common})
+        else:
+            converted.append({"item": row.get("title", ""), "date": row.get("date", ""),
+                              **common})
+
+    key_fields = {"courses_certifications": ["title"], "teaching": ["item"],
+                  "conference_contributions": ["title", "event"],
+                  "volunteering_languages": ["item"]}[section]
+    merged = _merge_cv_rows(cv.get(section, []), converted, key_fields)
+    merged.sort(key=lambda r: str(r.get("date") or ""), reverse=True)
+    return merged
+
+
 # --- Shapes for the table editors ----------------------------------------------------------
 def table_frame(rows, columns):
     """A DataFrame for st.data_editor with one column per field, typed from what the rows
@@ -2315,6 +2545,177 @@ def table_rows(frame, columns, required=None):
             continue
         rows.append(row)
     return rows
+
+
+# --- Output counts -------------------------------------------------------------------------
+# A CV's conference list is usually "the ones worth naming, plus N more" -- cv_data.json keeps
+# that as one row with note "count only" and the number in its title. Counting rows would
+# quietly under-report by 13, so the number is read out of the row instead, in the one place
+# both the tiles and the chart ask.
+def rollup_count(row):
+    """How many contributions a row actually stands for: 1, unless it is a 'count only'
+    roll-up, in which case the first number in its title."""
+    if str(row.get("note", "")).strip().lower() != "count only":
+        return 1
+    match = re.search(r"\d+", str(row.get("title", "")))
+    return int(match.group()) if match else 1
+
+
+def cv_output_counts(publications, conferences):
+    """The headline output numbers, counted from the lists themselves so they move when a new
+    paper or poster is logged instead of being retyped into the CV."""
+    pubs = list(publications or [])
+    papers = [p for p in pubs if str(p.get("type", "article")).lower() != "preprint"]
+    confs = list(conferences or [])
+    posters = sum(rollup_count(c) for c in confs
+                  if str(c.get("type", "")).lower() not in ("oral", "talk"))
+    talks = sum(rollup_count(c) for c in confs
+                if str(c.get("type", "")).lower() in ("oral", "talk"))
+    return {
+        "papers": len(papers),
+        "first_author": sum(1 for p in papers if p.get("first_author")),
+        "preprints": len(pubs) - len(papers),
+        "posters": posters, "talks": talks, "contributions": posters + talks,
+    }
+
+
+# --- The CV's "current role" numbers, read live from the tracker ---------------------------
+def _period_key_from_text(value):
+    """The tools inventory's own 'Built in' spelling -> the label discover_periods uses, so
+    the two join: '2025/2026' or '2025-2026' -> '2025–2026' (en dash), and a single '2025' ->
+    '2025'. Both spellings matter -- a reporting period that runs on a fiscal year is written
+    with two years, one that runs on the calendar with one."""
+    years = re.findall(r"\d{4}", str(value or ""))
+    if len(years) >= 2:
+        return f"{years[0]}–{years[1]}"
+    return years[0] if years else ""
+
+
+def tools_built_by_period(tools_df):
+    """period label -> names of the tools built in it. Deprecated tools are left out, the
+    same call the Tools page's own counts make: a retired tool isn't something the service
+    has."""
+    built = {}
+    if tools_df is None or not len(tools_df):
+        return built
+    status = tools_df.get("Status", pd.Series("", index=tools_df.index)).astype(str).str.strip()
+    for _, row in tools_df[status != "Deprecated"].iterrows():
+        label = _period_key_from_text(row.get("Built in"))
+        if label:
+            built.setdefault(label, []).append(str(row.get("Name", "")).strip())
+    return built
+
+
+def cv_role_metrics(periods, load_projects_fn=load_projects, load_meetings_fn=load_meetings,
+                    tools_df=None, timelog=None, pause_notes=None, all_pubs=None,
+                    all_outputs=None):
+    """Everything the CV says about the current role, computed from the live files instead
+    of being retyped into the CV: one entry per reporting period, plus the across-period
+    totals the headline stats quote.
+
+    Nothing here is stored. The CV's own cv_stats section deliberately holds no service numbers
+    (its README says as much) -- those are exactly the figures that go stale in a written CV,
+    so the page renders them from this and the CV store never gets a copy that can drift.
+
+    Never raises on a period: a workbook that's locked or malformed is skipped, the same
+    tolerance build_project_lookup takes, so one bad file can't blank the page."""
+    per_period, groups_all, last_activity = [], set(), None
+    tools_by_period = tools_built_by_period(tools_df)
+
+    for period in periods:
+        try:
+            projects = load_projects_fn(period["file"], period["sheet"])
+            meetings = load_meetings_fn(period["file"], period["meetings_sheet"])
+        except Exception:
+            continue
+
+        df_period = filter_to_period(timelog, period) if timelog is not None else None
+        glance = year_at_a_glance(projects, meetings, df_period)
+        lead_df = lead_time_table(projects, df_period, period_end=period["end"],
+                                  pause_notes=pause_notes)
+        stats = lead_time_summary(lead_df)
+
+        trigger = projects.get("Project Trigger", pd.Series(dtype=str)).astype(str).str.strip()
+        delivered = (int(projects["Final Report Sent"].notna().sum())
+                     if "Final Report Sent" in projects.columns else 0)
+        groups = set(projects.get("Grupo", pd.Series(dtype=str)).dropna()) - {"ADA"}
+        groups |= set(meetings.get("Grupo", pd.Series(dtype=str)).dropna()) - {"ADA"}
+        groups_all |= groups
+
+        # "Data as of" = the newest tracker date that has actually happened. Capped at today
+        # on purpose: a Closing Day can be booked ahead (the bureaucratic close of a project
+        # already delivered), and a CV stamped with a date in the future reads as a mistake.
+        today = pd.Timestamp.now().normalize()
+        for col in DATE_COLS:
+            if col in projects.columns and projects[col].notna().any():
+                newest = projects.loc[projects[col] <= today, col].max()
+                if pd.notna(newest):
+                    last_activity = newest if last_activity is None else max(last_activity, newest)
+
+        per_period.append({
+            "label": period["label"], "start": period["start"], "end": period["end"],
+            "projects_total": glance["projects_total"],
+            "active": glance["projects_active"], "concluded": glance["projects_concluded"],
+            "delivered": delivered,
+            "consulting": int((trigger == "Consulting").sum()),
+            "meetings": glance["meetings_total"],
+            "groups": len(groups),
+            "hours": glance["total_hours"],
+            # Two different questions, both asked of the CV: "how long until I get my
+            # results" (working -- data in hand to final report, the figure the CV quotes as
+            # time to deliver) and "how long from my first email" (total, which includes the
+            # queue). Kept apart rather than blended into one number.
+            "median_working_days": stats["median_working"],
+            "median_total_days": stats["median_total"],
+            "median_waiting_days": stats["median_waiting"],
+            "delivered_measured": stats["n_delivered"],
+            "bands": turnaround_by_size(lead_df),
+            "tools": sorted(tools_by_period.get(period["label"], [])),
+            "publications": len((all_pubs or {}).get(period["label"], [])),
+            "outputs": cv_outputs_flat(all_outputs, period_label=period["label"]),
+        })
+
+    totals = {
+        "periods": len(per_period),
+        "projects_total": sum(p["projects_total"] for p in per_period),
+        "delivered": sum(p["delivered"] for p in per_period),
+        "consulting": sum(p["consulting"] for p in per_period),
+        "meetings": sum(p["meetings"] for p in per_period),
+        "groups": len(groups_all),
+        "tools": sum(len(names) for names in tools_by_period.values()),
+        "publications": sum(p["publications"] for p in per_period),
+        "outputs": sum(len(p["outputs"]) for p in per_period),
+        "since": min((p["start"] for p in per_period), default=None),
+        "as_of": last_activity,
+    }
+    return {"periods": per_period, "totals": totals}
+
+
+def cv_html_with_live_metrics(metrics, src=None):
+    """A hand-built standalone CV page (Data/CV_dashboard.html, if one is there) with its live
+    figures filled in from `cv_role_metrics`. That file already marks them -- every number
+    the dashboard owns is a `data-metric` span, read at load time out of a JSON block the
+    page carries -- so refreshing it means rewriting that one block, not the page.
+
+    Returns the HTML text for the caller to offer as a download. A copy with no metrics block
+    (an older or hand-trimmed page) comes back unchanged rather than failing: the page is
+    still perfectly valid, it just has nothing live in it."""
+    src = Path(src or CV_HTML_PATH)
+    html = src.read_text(encoding="utf-8")
+    totals = metrics["totals"]
+    as_of = totals.get("as_of")
+    live = {
+        "gimm_deliverables_total": totals["delivered"],
+        "gimm_projects_total": totals["projects_total"],
+        "gimm_tools_total": totals["tools"],
+        "gimm_updated": pd.Timestamp(as_of).strftime("%d %b %Y") if as_of is not None else "",
+    }
+    block = json.dumps(live, ensure_ascii=False)
+    updated, n = re.subn(
+        r'(<script type="application/json" id="cv-metrics">).*?(</script>)',
+        lambda m: m.group(1) + block + m.group(2), html, count=1, flags=re.DOTALL,
+    )
+    return updated if n else html
 
 
 # --- Quick-add for the project tracker -----------------------------------------------------

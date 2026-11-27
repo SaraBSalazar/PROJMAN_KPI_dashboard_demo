@@ -2813,3 +2813,76 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
         legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5),
     )
     return fig
+
+
+# --- CV page ------------------------------------------------------------------------------
+# The three states a skill can be in across eras, ordered weakest to strongest. One hue plus a
+# neutral, not three hues: this is a magnitude question ("how much was it used"), and each
+# state also carries its own marker shape, so it never depends on colour alone.
+CV_SKILL_STATES = ["not used", "basic", "used"]
+CV_SKILL_SYMBOLS = {"not used": "line-ew", "basic": "circle-open", "used": "circle"}
+
+
+def fig_cv_skill_matrix(skill_matrix, title="What each era was built on"):
+    """Skills down the side, career eras across the top, one marker per cell: used, used at a
+    basic level, or not used. The point is the diagonal it draws -- wet-lab and genomics
+    giving way to OMICs, pipelines and user support -- so the rows are ordered by when a skill
+    was last in use rather than alphabetically."""
+    rows = [dict(r) for r in (skill_matrix or [])]
+    fig = go.Figure()
+    if not rows:
+        _empty(fig, "No skill matrix recorded yet")
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+        fig.update_layout(**base_layout(title, width=700, height=260))
+        return fig
+
+    eras = [c for c in rows[0] if c != "skill"]
+    normal = (TL_PALETTE_DARK if _DARK else TL_PALETTE)[0]
+    colors = {"used": normal, "basic": normal, "not used": TL_BASELINE}
+
+    def state_of(row, era):
+        value = str(row.get(era, "")).strip().lower()
+        return value if value in CV_SKILL_STATES else "not used"
+
+    def rank(row):
+        # Last era a skill was in use, then how many eras it spans -- current skills first.
+        in_use = [i for i, era in enumerate(eras) if state_of(row, era) != "not used"]
+        return (max(in_use) if in_use else -1, len(in_use))
+
+    rows.sort(key=rank)
+    labels = [_wrap_label(str(r.get("skill", "")), 30) for r in rows]
+
+    for state in CV_SKILL_STATES:
+        xs, ys, hovers = [], [], []
+        for row, label in zip(rows, labels):
+            for era in eras:
+                if state_of(row, era) != state:
+                    continue
+                xs.append(era)
+                ys.append(label)
+                hovers.append(f"<b>{row.get('skill', '')}</b><br>{era}: {state}")
+        if not xs:
+            continue
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="markers", name=state,
+            marker=dict(symbol=CV_SKILL_SYMBOLS[state], size=17, color=colors[state],
+                        line=dict(color=colors[state], width=2)),
+            hovertext=hovers, hoverinfo="text",
+        ))
+
+    # Both axes pinned for the same reason as the career timeline: era columns left to trace
+    # order come out shuffled, and an era axis out of chronological order is just wrong.
+    fig.update_xaxes(side="top", showgrid=True, gridcolor=TL_GRID,
+                     categoryorder="array", categoryarray=eras,
+                     tickfont=dict(size=14, color=TL_INK_SECONDARY))
+    fig.update_yaxes(showgrid=True, gridcolor=TL_GRID,
+                     categoryorder="array", categoryarray=labels,
+                     tickfont=dict(size=14, color=TL_INK_SECONDARY))
+    fig.update_layout(
+        **base_layout(title, width=820, height=max(340, 130 + 40 * len(rows))),
+        margin=dict(l=10, r=20, t=110, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="right", x=1,
+                    font=dict(size=14)),
+    )
+    return fig
