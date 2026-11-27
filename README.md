@@ -175,6 +175,39 @@ together instead of being scattered through one flat list.
 
 **Data**
 
+- **Time Tracker** — a stopwatch, and the week it produces. Start and stop a timer against
+  a project, category and major task (the same dropdowns the Week editor offers, so a tag
+  typed here is a tag the whole dashboard knows), and the week shows up two ways: a
+  **calendar** — one block per stretch of work at the hour it happened, coloured by category
+  or project, overlapping stretches side by side, anything past midnight drawn in both days
+  — and a **breakdown** — hours per day for every project, split by major task (or any other
+  pair of fields), ordered by total. Entries are editable as a table, and one can be added
+  by hand for a stretch you forgot.
+
+  `Data/time_entries.csv` is *not* the time log: it is the other half of it. `track_time.csv`
+  is one row per project/category/major task **per week**, which is the right shape to report
+  and a hopeless shape to record in; the tracker holds the stretches, and **⬆ Send this week
+  to the time log** folds them into exactly those weekly rows. Every row it would write is
+  shown first, with what the log holds now beside it and the hours editable, so nothing is
+  written you didn't look at. Pushing the same week twice changes nothing, and rows the log
+  has but the tracker doesn't are never touched.
+
+  **Were you actually there?** While a timer runs, a background watcher asks the operating
+  system how long it has been since the last keyboard or mouse event. Come back after a
+  stretch longer than the threshold (5 minutes by default) and the page offers it back: keep
+  it, or cut it and carry on, or cut it and stop. Cutting a stretch out of the middle splits
+  the entry in two, because an entry has nowhere to record a hole. Time when the dashboard
+  itself wasn't running — shut, asleep, lid closed — is listed separately, which is the
+  honest label for the timer-left-on-overnight case. *(Idle detection reads the OS input
+  clock, which this build does on Windows; elsewhere the unwatched-gap half still works.)*
+
+  **Your calendar behind the week.** Paste a Google Calendar iCal address into the page and
+  its events are drawn as a grey wash behind the tracked blocks — what the week was meant to
+  be, against what it was — with planned-vs-tracked hours underneath. A meeting you actually
+  attended can be ticked and becomes a tracked entry with the event's own times. It is
+  **read-only**: the dashboard downloads the file and can never change the calendar. The
+  address is stored on that machine only, never in the project folder. Click-by-click
+  instructions are on the page itself — see below.
 - **Add Data** — quick-add and edit forms for projects and consultation meetings.
 
 Appending `?readonly=true` to any page URL hides every editing control. It's a display
@@ -193,6 +226,7 @@ tied to its own institution's fiscal calendar — see the note below.)
 | File | Holds |
 | --- | --- |
 | `Data/track_time.csv` | Personal time log, `;`-separated: entry, category, hours, major task, month, week, notes. Powers the Week/Month/Year views. |
+| `Data/time_entries.csv` | The stopwatch store behind the Time Tracker page, `;`-separated: id, start, end, project, category, major task, description, notes. One row per *stretch* of work with real timestamps (naive local time — a time sheet records the hour the clock showed); a blank `end` is the timer still running. Only the Time Tracker page reads it, and it reaches the rest of the dashboard through that page's explicit push into `track_time.csv`. |
 | `Data/KPI_<year>.xlsx` | The project tracker — one `<year>_CALENDAR` sheet plus a `<year>_CALENDAR_meetings` sheet for consultations. |
 | `Data/Special_Projects_Ratings.xlsx` | Longer-running initiatives and their goal ratings. |
 | `Data/special_project_tasks.json` | Per-project task checklists (source of truth), mirrored to `Special_Projects_Tasks.xlsx` on every edit. |

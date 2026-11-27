@@ -30,7 +30,11 @@ pages under section headings instead of listing them flat:
 - **Profile** — CV (`pages/7_CV.py` — the career record, with everything about the current
   role computed from the live files rather than written down, and every section editable
   behind the **✏️ Edit mode** toggle)
-- **Data** — Add Data (`pages/4_Add_Data.py`)
+- **Data** — ⏱ Time Tracker (`pages/8_Time_Tracker.py` — a stopwatch over the same
+  project / category / major-task vocabulary the Week editor uses, with the week drawn as
+  a calendar and as a per-day breakdown, idle detection while a timer runs, an optional
+  read-only Google Calendar layer, and an explicit, previewed push of that week into
+  `track_time.csv`) and Add Data (`pages/4_Add_Data.py`)
 
 Sidebar icons are Material Symbols (`":material/name:"`), which stay monochrome and take the
 theme's ink colour; the browser-tab icon each page sets in its own `st.set_page_config` stays
@@ -86,6 +90,9 @@ each page:
   the ones most likely to break if a chart function gets an unexpected column.
 - **Special Projects**: click a bubble, confirm its project card and task checklist open.
 - **Add Data**: add a dummy project, confirm it writes back to `Data/KPI_2025.xlsx`
+- **Time Tracker**: start the timer, stop it, confirm the block appears on the Calendar
+  tab and the row in the Entries table; then open "⬆ Send this week to the time log" and
+  check the proposed row before writing it
   without error.
 - **Tools & AI Skills**: table and gallery render.
 
@@ -151,6 +158,46 @@ Without that file there is simply no export section.
 
 The CV is **not** in the exported snapshot in `Share/`. A CV is personal, so it stays in the
 live app only.
+
+### Connecting a Google Calendar to the Time Tracker (no coding needed)
+
+The Time Tracker can draw your calendar's events behind your tracked time, so you can see
+what the week was meant to be next to what it actually was. It only ever *reads* — it
+cannot change, add or delete anything in your calendar.
+
+1. Open **Google Calendar** in a browser on a computer (not the phone app).
+2. In the left-hand list, hover the calendar you want, click its **⋮** menu, and choose
+   **Settings and sharing**.
+3. Scroll down to **Integrate calendar**.
+4. Copy **Secret address in iCal format** — the long one ending in `.ics`. Click the eye
+   icon first if it's hidden.
+5. In the dashboard, open **Time Tracker → 📅 Connect your Google Calendar**, paste it in
+   the box, and click **Save**.
+
+That's it. Your meetings appear as grey blocks behind the week.
+
+**Secret or public?** Either works — the dashboard just downloads the file. The **public**
+address (`…/public/basic.ics`) only exists while the calendar is shared publicly with the
+whole internet, which a work calendar shouldn't be; if it isn't, Google answers `404`. The
+**secret** address works whatever the sharing settings are, which is why it's the one to
+use. Treat it like a password — anyone holding it can read that calendar. It is stored on
+that computer only, never in the project folder and never in git.
+
+**Other calendars.** Anything that publishes an `.ics` URL works the same way — Outlook /
+Microsoft 365 ("Publish a calendar"), Apple iCloud ("Public Calendar"), Nextcloud, and so
+on. If the link ends in `.ics` and starts with `https://`, paste it in.
+
+### What keeps counting when things stop
+
+A running timer is **a start timestamp in a file**, not a process counting. So:
+
+| What happens | The timer | Why |
+| --- | --- | --- |
+| **Internet drops** | unaffected | Everything the tracker touches is a local file. |
+| **You close the browser tab** | still running | The entry is open in `time_entries.csv`; reopen the page and it is still going, with the right elapsed time. |
+| **You stop `streamlit run`, or reboot** | still "running" when you come back | Nothing wrote an end time, so the entry stays open. This is the one case that over-counts — and it is what the away prompt catches: the stretch shows up as *the tracker wasn't running*, with a button to cut it. |
+| **The machine sleeps** | same as above | A poll arriving late is read as a gap, not as work. |
+| **The calendar can't be reached** | unaffected | The planned layer falls back to the last downloaded copy and says when that was. Nothing else on the page needs a network. |
 
 ## 2. Sharing with someone on the same WiFi/network
 
@@ -284,6 +331,10 @@ want (weekly, daily, ...). A few things worth knowing:
 | What you edit in the dashboard                                       | Saved to                                                                                                               |
 | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Week tab's time log table                                            | `Data/track_time.csv`                                                                                                |
+| Time Tracker → ▶ Start / ⏹ Stop / 🗑 Discard, the Entries table, "➕ Add an entry by hand" | `Data/time_entries.csv` (one row per stretch; a blank `end` is the timer still running). Any brand-new tag typed in also goes to `Data/custom_tags.json`. |
+| Time Tracker → "⬆ Send this week to the time log"                   | `Data/track_time.csv` — the **only** place the tracker touches the time log. One row per project / category / major task per week: a matching row is overwritten in place, an unmatched one is appended, everything else left alone. Previewed and editable before it writes; pushing a week twice changes nothing. |
+| Time Tracker → away prompt and ⚙ Away detection                     | `Data/time_entries.csv` for the split entries, plus the watcher's own record (watch/idle spans, the threshold, what you've already dismissed) in your user app-data folder — machine-local, never in the project folder. Deleting it loses nothing but the ability to ask about stretches already past. |
+| Time Tracker → "📅 Connect your Google Calendar"                    | the calendar address and options, in that same machine-local folder, with the last downloaded copy of the calendar beside it. **Never** in the project folder or git: the secret iCal address is a credential. The dashboard only ever downloads — it has no way to change a calendar. |
 | Special Projects → "All ratings" table                              | `Data/Special_Projects_Ratings.xlsx`                                                                                 |
 | Projects Review → "Non-quantifiable project outputs" table          | the period's`Data/KPI_*.xlsx`                                                                                   |
 | Add Data → new project / edit project / new meeting                 | the period's`Data/KPI_*.xlsx`                                                                                   |

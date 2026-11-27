@@ -551,6 +551,41 @@ def _row_hours(row):
     return hrs, mins
 
 
+def new_timelog_row(week_start, project, category, major_task, hrs, mins,
+                    timesheet="No", notes=""):
+    """One track_time.csv row, with the file's Month / Month-and-year / Week / Year columns
+    derived from the week's Monday. Shared by the Week editor's new rows and the time
+    tracker's push, so both write exactly the same shape.
+
+    Hrs/Min are normalized through their total: "1h and 90min" is stored as 2h30, and a
+    fractional Hrs (2.5) keeps its half hour instead of being truncated to 2 by the int()
+    the file's integer columns need."""
+    month_name = week_start.strftime("%B")
+    hrs, mins = split_hm(float(hrs or 0) + float(mins or 0) / 60)
+    return {
+        "Entry": project,
+        "Timesheet updated": timesheet if timesheet in ("Yes", "No", "N/A") else "No",
+        "Category": category,
+        "Hours (exact)": hrs + mins / 60,
+        "Major task name (chart)": major_task,
+        "Hrs": hrs,
+        "Min": mins,
+        "Month": month_name,
+        "Month and year (chart)": f"{month_name} {week_start.year}",
+        "Notes": notes,
+        "Week": ordinal_week_label(week_start),
+        "Weekly entry name (chart)": project,
+        "Year": week_start.year,
+    }
+
+
+def split_hm(hours):
+    """Hours -> the (Hrs, Min) pair the time log stores, rounded to the minute as one
+    number so 1.9999 h becomes (2, 0) and never (1, 60)."""
+    total_minutes = int(round(float(hours or 0) * 60))
+    return divmod(total_minutes, 60)
+
+
 def apply_week_edits(raw_df, orig_index, edited, week_start):
     """Merge a data_editor result for one week back into the raw time-log frame.
 
@@ -580,28 +615,17 @@ def apply_week_edits(raw_df, orig_index, edited, week_start):
 
     new_rows = edited.loc[[i for i in edited.index if i >= n_orig]]
     rows_to_add = []
-    week_text = ordinal_week_label(week_start)
-    month_name = week_start.strftime("%B")
     for _, r in new_rows.iterrows():
         if not str(r.get("Weekly entry name (chart)", "") or "").strip():
             continue
         hrs, mins = _row_hours(r)
         timesheet = str(r.get("Timesheet updated", "") or "").strip()
-        rows_to_add.append({
-            "Entry": r.get("Weekly entry name (chart)", ""),
-            "Timesheet updated": timesheet if timesheet in ("Yes", "No", "N/A") else "No",
-            "Category": r.get("Category", ""),
-            "Hours (exact)": hrs + mins / 60,
-            "Major task name (chart)": r.get("Major task name (chart)", ""),
-            "Hrs": hrs,
-            "Min": mins,
-            "Month": month_name,
-            "Month and year (chart)": f"{month_name} {week_start.year}",
-            "Notes": r.get("Notes", ""),
-            "Week": week_text,
-            "Weekly entry name (chart)": r.get("Weekly entry name (chart)", ""),
-            "Year": week_start.year,
-        })
+        rows_to_add.append(new_timelog_row(
+            week_start, project=r.get("Weekly entry name (chart)", ""),
+            category=r.get("Category", ""), major_task=r.get("Major task name (chart)", ""),
+            hrs=hrs, mins=mins, timesheet=str(r.get("Timesheet updated", "") or "").strip(),
+            notes=r.get("Notes", ""),
+        ))
     if rows_to_add:
         updated_raw = pd.concat([updated_raw, pd.DataFrame(rows_to_add)], ignore_index=True)
     return updated_raw
@@ -3405,4 +3429,480 @@ def year_at_a_glance(projects, meetings, df_period=None):
         "total_hours": total_hours, "project_hours": project_hours,
         "groups_total": n_groups, "groups_with_projects": len(project_groups),
         "groups_consultation_only": len(consultation_only),
+    }
+
+
+# ============================================================================================
+# TIME TRACKER -- Data/time_entries.csv
+# ============================================================================================
+# A second, finer-grained store sitting *under* the time log: one row per stretch of work
+# with a real start and end timestamp, the way a stopwatch app records it. track_time.csv
+# stays what it has always been -- one row per (project, category, major task) per week --
+# and the tracker folds a week's stretches into exactly that shape when you push it
+# (timelog_push_preview / apply_timelog_push). Nothing here writes the time log by itself:
+# the push is an explicit, previewed step, and the Week editor keeps the last word.
+#
+# Times are stored as naive local ISO text ("2026-11-27T09:35:00") because every consumer
+# here is local wall clock: the calendar grid, the weekly rollup and the reporting weeks all
+# mean "the hour it said on the clock", which is what a time sheet records.
+
+TIME_ENTRIES_PATH = DATA_DIR / "time_entries.csv"
+
+TIME_ENTRY_COLS = [
+    "id", "start", "end", "project", "category", "major_task", "description", "notes",
+]
+
+# Tracker field -> the track_time.csv column it folds into. These three are also the key a
+# week's entries are rolled up on, and the key a proposed row is matched against the log on.
+TRACKER_TO_TIMELOG = {
+    "project": "Weekly entry name (chart)",
+    "category": "Category",
+    "major_task": "Major task name (chart)",
+}
+ROLLUP_KEYS = list(TRACKER_TO_TIMELOG)
+# The same five columns under the names load_timelog's PARSED frame uses: it renames
+# "Weekly entry name (chart)" to "Project" and leaves the other four alone. Matching reads
+# the parsed frame (renamed major tasks, stripped blanks); writing targets the raw one.
+TRACKER_TO_PARSED = dict(TRACKER_TO_TIMELOG, project="Project")
+
+# What a block shorter than this is drawn as on the calendar. A 2-minute entry is a real
+# entry -- it just has no height to speak of, and a block you cannot see or hover is the
+# same as a lost one. Only the drawn height is floored; `hours` stays exact everywhere.
+MIN_DRAWN_MINUTES = 7
+
+
+def iso_stamp(ts):
+    """A Timestamp -> the text the store holds. Seconds precision: the file is read by
+    people too, and a tracker that logs microseconds is logging noise."""
+    return pd.Timestamp(ts).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def new_entry_id():
+    return f"te_{uuid.uuid4().hex[:12]}"
+
+
+def load_time_entries():
+    """Read time_entries.csv -> a frame with TIME_ENTRY_COLS plus the derived `start_dt`,
+    `end_dt`, `running`, `hours`, `date` and `week_start` (that day's Monday), sorted
+    oldest-first. A missing file is an empty tracker, not an error -- the page has to work
+    on the day it is first opened -- and a row with no parseable start is dropped, since
+    there is nothing a timeline could do with it."""
+    if TIME_ENTRIES_PATH.exists():
+        raw = pd.read_csv(TIME_ENTRIES_PATH, sep=";", encoding="utf-8-sig", dtype=str)
+    else:
+        raw = pd.DataFrame(columns=TIME_ENTRY_COLS)
+    for col in TIME_ENTRY_COLS:
+        if col not in raw.columns:
+            raw[col] = ""
+    df = raw[TIME_ENTRY_COLS].copy()
+    for col in TIME_ENTRY_COLS:
+        df[col] = df[col].fillna("").astype(str).str.strip()
+
+    df["start_dt"] = pd.to_datetime(df["start"], errors="coerce")
+    df["end_dt"] = pd.to_datetime(df["end"], errors="coerce")
+    df = df[df["start_dt"].notna()].copy()
+
+    # A blank end means "still running", which is a state, not a duration -- it contributes
+    # 0 hours to every sum until it is stopped. (The calendar draws it up to `now` instead;
+    # see entry_segments.) A negative span can only come from a hand-edited file, and is
+    # clamped rather than left to quietly subtract hours from a week's total.
+    df["running"] = df["end_dt"].isna()
+    df["hours"] = (df["end_dt"] - df["start_dt"]).dt.total_seconds() / 3600
+    df["hours"] = pd.to_numeric(df["hours"], errors="coerce").fillna(0.0).clip(lower=0.0)
+
+    df["date"] = df["start_dt"].dt.normalize()
+    df["week_start"] = df["date"] - pd.to_timedelta(df["start_dt"].dt.weekday, unit="D")
+    return df.sort_values("start_dt", kind="stable").reset_index(drop=True)
+
+
+def save_time_entries(df):
+    """Write the tracker store, dropping the derived columns load_time_entries adds. Raises
+    PermissionError if the file is open elsewhere, same as every other save here."""
+    out = df.copy()
+    for col in TIME_ENTRY_COLS:
+        if col not in out.columns:
+            out[col] = ""
+    out[TIME_ENTRY_COLS].to_csv(TIME_ENTRIES_PATH, sep=";", index=False, encoding="utf-8-sig")
+
+
+def _is_running(entries):
+    """Running-ness read off the stored `end` column rather than the derived `running` one,
+    so these helpers also work on a frame rebuilt by hand (the editor's save path) that
+    never went through load_time_entries."""
+    return entries["end"].fillna("").astype(str).str.strip() == ""
+
+
+def running_entry(entries):
+    """The entry still running, or None. If several are somehow running at once -- two
+    browser tabs, a hand-edited file -- the most recently started one wins: it is the one
+    the Start button would have just created."""
+    live = entries[_is_running(entries)]
+    if live.empty:
+        return None
+    return live.sort_values("start", kind="stable").iloc[-1]
+
+
+def stop_entry(entries, now, entry_id=None):
+    """Close the running entry (or `entry_id`) at `now`. Returns the updated frame; a frame
+    with nothing running comes back unchanged. The end is never written before the start --
+    a clock change, or a start hand-edited into the future, would otherwise store a negative
+    span that every later sum silently eats."""
+    out = entries.copy()
+    mask = _is_running(out) if entry_id is None else (out["id"] == entry_id)
+    for idx in out.index[mask]:
+        start = pd.to_datetime(out.loc[idx, "start"], errors="coerce")
+        end = pd.Timestamp(now)
+        if pd.notna(start) and end < start:
+            end = start
+        out.loc[idx, "end"] = iso_stamp(end)
+    return out
+
+
+def start_entry(entries, now, **fields):
+    """Append a new running entry starting at `now`, after stopping whatever was running --
+    one timer at a time, the way a stopwatch works. `fields` are any of the TIME_ENTRY_COLS
+    text fields (project, category, major_task, description, tool, special_project, notes).
+    Returns the updated frame, ready for save_time_entries."""
+    out = stop_entry(entries, now)
+    row = {col: "" for col in TIME_ENTRY_COLS}
+    row.update({k: str(v or "").strip() for k, v in fields.items() if k in TIME_ENTRY_COLS})
+    row["id"] = new_entry_id()
+    row["start"] = iso_stamp(now)
+    row["end"] = ""
+    return pd.concat([out, pd.DataFrame([row])], ignore_index=True)
+
+
+def add_entry(entries, start, end, **fields):
+    """Append a finished entry spanning `start`..`end` (the by-hand form, and the editor's
+    blank rows). An end at or before the start is read as crossing midnight and pushed to
+    the next day -- "22:30 to 00:15" is the one way a day's last entry gets typed."""
+    start, end = pd.Timestamp(start), pd.Timestamp(end)
+    if end <= start:
+        end = end + pd.Timedelta(1, "D")
+    row = {col: "" for col in TIME_ENTRY_COLS}
+    row.update({k: str(v or "").strip() for k, v in fields.items() if k in TIME_ENTRY_COLS})
+    row["id"] = fields.get("id") or new_entry_id()
+    row["start"], row["end"] = iso_stamp(start), iso_stamp(end)
+    return pd.concat([entries, pd.DataFrame([row])], ignore_index=True)
+
+
+def delete_entries(entries, ids):
+    return entries[~entries["id"].isin(list(ids))].copy()
+
+
+def split_entry(entries, entry_id, stretches, keep_running=False):
+    """Replace one entry with one entry per (start, end) in `stretches` -- what is left of a
+    tracked stretch once the time away from the machine is cut out of it.
+
+    It has to become several entries rather than one shorter one, because a stretch with its
+    middle removed is two pieces of work and there is nowhere in an entry to record a hole.
+    Every piece keeps the original's tags and description; the first keeps its id too, so an
+    entry that only had time trimmed off its end keeps its identity.
+
+    `keep_running` leaves the last piece open -- the "I'm back at my desk, carry on" case.
+    No stretches at all means nothing survived (she walked away immediately), and the entry
+    is removed. Returns the updated frame."""
+    out = entries.copy()
+    match = out[out["id"] == entry_id]
+    if match.empty:
+        return out
+
+    template = {col: match.iloc[0].get(col, "") for col in TIME_ENTRY_COLS}
+    out = out[out["id"] != entry_id]
+    stretches = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in stretches
+                 if pd.Timestamp(b) > pd.Timestamp(a)]
+
+    rows = []
+    for i, (start, end) in enumerate(stretches):
+        row = dict(template)
+        row["id"] = entry_id if i == 0 else new_entry_id()
+        row["start"] = iso_stamp(start)
+        row["end"] = "" if (keep_running and i == len(stretches) - 1) else iso_stamp(end)
+        rows.append(row)
+    if rows:
+        out = pd.concat([out, pd.DataFrame(rows, columns=TIME_ENTRY_COLS)], ignore_index=True)
+    return out
+
+
+def week_start_of(day):
+    """The Monday of `day`'s week -- the same Monday-start weeks the time log's own
+    '3rd November' labels resolve to (week_bounds / ordinal_week_label)."""
+    day = pd.Timestamp(day).normalize()
+    return day - pd.Timedelta(int(day.weekday()), "D")
+
+
+def entry_segments(entries, week_start, now=None):
+    """One drawable block per (entry, day) for the week beginning `week_start`.
+
+    An entry running past midnight is cut at the day boundary and drawn once in each day it
+    touches: a single block spanning two columns is not something a calendar grid can draw,
+    and splitting it is also what makes a Sunday-night-into-Monday stretch land its hours in
+    the right week when the week is pushed to the time log.
+
+    The still-running entry is drawn up to `now`, so the calendar shows what is happening
+    right now. Pass `now=None` to leave it out entirely -- which is what the push does: time
+    that has not stopped yet is not time you can report.
+
+    Returns a frame with every TIME_ENTRY_COL plus `day` (0 = Monday), `start_min`/`end_min`
+    (minutes from that day's midnight), `hours`, `running`, and the `lane`/`lanes` that
+    pack_lanes assigns."""
+    cols = TIME_ENTRY_COLS + ["day", "start_min", "end_min", "hours", "running"]
+    week_start = pd.Timestamp(week_start).normalize()
+    week_end = week_start + pd.Timedelta(7, "D")
+
+    rows = []
+    for _, e in entries.iterrows():
+        start = pd.to_datetime(e.get("start"), errors="coerce")
+        end = pd.to_datetime(e.get("end"), errors="coerce")
+        running = bool(pd.isna(end))
+        if pd.isna(start):
+            continue
+        if running:
+            if now is None:
+                continue
+            end = max(pd.Timestamp(now), start)
+        if end <= week_start or start >= week_end:
+            continue
+        seg_start, seg_end = max(start, week_start), min(end, week_end)
+
+        day = seg_start.normalize()
+        while day < seg_end:
+            nxt = day + pd.Timedelta(1, "D")
+            a, b = max(seg_start, day), min(seg_end, nxt)
+            if b > a:
+                rows.append({
+                    **{c: e.get(c, "") for c in TIME_ENTRY_COLS},
+                    "day": int((day - week_start).days),
+                    "start_min": (a - day).total_seconds() / 60,
+                    "end_min": (b - day).total_seconds() / 60,
+                    "hours": (b - a).total_seconds() / 3600,
+                    "running": running,
+                })
+            day = nxt
+
+    segments = pd.DataFrame(rows, columns=cols)
+    return pack_lanes(segments)
+
+
+def pack_lanes(segments):
+    """Side-by-side lanes for blocks that overlap within the same day, the way a calendar
+    app lays out a double-booked hour. A block overlapping nothing keeps the whole column
+    (`lanes` = 1); a run of mutually-overlapping blocks splits its column `lanes` ways and
+    each takes `lane`. Clusters are per day and chained -- A overlapping B and B overlapping
+    C puts all three in one cluster even when A and C don't touch, which is what keeps every
+    block in the group the same width instead of two of them sharing an edge."""
+    segments = segments.copy()
+    segments["lane"] = 0
+    segments["lanes"] = 1
+    if segments.empty:
+        return segments
+
+    for _day, day_rows in segments.groupby("day", sort=False):
+        order = day_rows.sort_values(["start_min", "end_min"], kind="stable").index
+        cluster, lane_ends, cluster_end = [], [], None
+        for idx in order:
+            start = segments.loc[idx, "start_min"]
+            # Packed against the DRAWN height, not the true one: two 1-minute entries a
+            # minute apart don't overlap in the data but do once both are floored to
+            # MIN_DRAWN_MINUTES, and lanes exist to stop drawn blocks covering each other.
+            end = max(segments.loc[idx, "end_min"], start + MIN_DRAWN_MINUTES)
+            if cluster_end is not None and start >= cluster_end:
+                segments.loc[cluster, "lanes"] = len(lane_ends)
+                cluster, lane_ends, cluster_end = [], [], None
+            lane = next((k for k, free_at in enumerate(lane_ends) if start >= free_at),
+                        len(lane_ends))
+            if lane == len(lane_ends):
+                lane_ends.append(end)
+            else:
+                lane_ends[lane] = end
+            segments.loc[idx, "lane"] = lane
+            cluster.append(idx)
+            cluster_end = end if cluster_end is None else max(cluster_end, end)
+        segments.loc[cluster, "lanes"] = len(lane_ends)
+
+    return segments
+
+
+def _group_label(value):
+    """A blank project/task/tool cell is a real state (an entry started before it was
+    labelled), so it groups under one visible name instead of vanishing into an empty row."""
+    text = str(value or "").strip()
+    return text if text and text.lower() != "nan" else "(unlabelled)"
+
+
+def tracker_breakdown(segments, level1, level2=None):
+    """The week's hours as the two-level day grid the breakdown table draws.
+
+    `level1`/`level2` are tracker field names ("project", "category", "major_task", "tool",
+    "special_project", "description"). Returns
+    {"groups": [{"label", "total", "days": [7 floats], "children": [same, minus children]}],
+     "day_totals": [7 floats], "total": float} -- groups and children both ordered by hours
+    descending, so the week reads top-down as where the time actually went.
+
+    A still-running block counts the time it has run so far (whatever `now` entry_segments
+    was given), which is why the breakdown and the calendar always agree."""
+    if segments.empty:
+        return {"groups": [], "day_totals": [0.0] * 7, "total": 0.0}
+
+    df = segments.copy()
+    df["_l1"] = df[level1].map(_group_label)
+    if level2:
+        df["_l2"] = df[level2].map(_group_label)
+
+    def day_row(frame):
+        by_day = frame.groupby("day")["hours"].sum()
+        return [float(by_day.get(d, 0.0)) for d in range(7)]
+
+    groups = []
+    for label, rows in df.groupby("_l1", sort=False):
+        children = []
+        if level2:
+            for sub_label, sub_rows in rows.groupby("_l2", sort=False):
+                children.append({"label": sub_label, "total": float(sub_rows["hours"].sum()),
+                                 "days": day_row(sub_rows)})
+            children.sort(key=lambda c: -c["total"])
+        groups.append({"label": label, "total": float(rows["hours"].sum()),
+                       "days": day_row(rows), "children": children})
+    groups.sort(key=lambda g: -g["total"])
+
+    return {"groups": groups, "day_totals": day_row(df), "total": float(df["hours"].sum())}
+
+
+def _key_text(value):
+    return str(value or "").strip()
+
+
+def timelog_push_preview(timelog_df, timelog_raw, segments, week_start):
+    """What pushing this tracker week into track_time.csv would do, row by row.
+
+    The week's blocks are folded into one proposed row per
+    (project, category, major task) -- the shape the time log
+    already has -- and each is matched against that same week's existing rows on the same
+    three values. Matching reads the *parsed* log (`timelog_df`), so a row still carrying a
+    renamed major task ("AI Agent" -> "AI Skills") still matches the tracker's current name;
+    writing targets `timelog_raw`, which is the frame that goes back to disk.
+
+    Each returned dict carries the three key fields, `hours` / `hrs` / `min`, `descriptions`
+    (what was typed against those blocks), `current_hours` / `current_timesheet` /
+    `current_notes` (what the log holds now -- None/"" when nothing matches, so a push can
+    offer back the Timesheet flag and the note that are already there instead of resetting
+    them), `row_index` (the raw_df label to overwrite, None for a new row) and `status`:
+      "new"       -- nothing in the log for this combination yet
+      "changed"   -- the log has it, with different hours
+      "same"      -- the log already agrees, to the minute
+      "duplicate" -- the week holds more than one row for this combination, so there is no
+                     single row to update. Left for you to merge in the Week editor rather
+                     than guessed at.
+    A still-running entry is excluded: time that has not stopped yet is not time you can
+    report. Rows the log has and the tracker doesn't are never touched or reported either --
+    time typed straight into the Week editor is just as real as time that went through a
+    stopwatch, and the push is not a mirror."""
+    week_start = pd.Timestamp(week_start).normalize()
+    finished = segments[~segments["running"].astype(bool)] if len(segments) else segments
+
+    existing = {}
+    if len(timelog_df):
+        for idx in timelog_df.index[timelog_df["_week_sort"] == week_start]:
+            key = tuple(_key_text(timelog_df.loc[idx, col]) for col in TRACKER_TO_PARSED.values())
+            existing.setdefault(key, []).append(idx)
+
+    proposals = []
+    if len(finished):
+        grouped = finished.groupby([finished[k].map(_key_text) for k in ROLLUP_KEYS], sort=False)
+        for key, rows in grouped:
+            key = tuple(key) if isinstance(key, tuple) else (key,)
+            hours = float(rows["hours"].sum())
+            hrs, mins = split_hm(hours)
+            matches = existing.get(key, [])
+            timesheet, notes = "", ""
+            if len(matches) > 1:
+                status, row_index, current = "duplicate", None, None
+            elif matches:
+                row_index = matches[0]
+                current = pd.to_numeric(timelog_df.loc[row_index, "Hours (exact)"], errors="coerce")
+                current = 0.0 if pd.isna(current) else float(current)
+                status = "same" if split_hm(current) == (hrs, mins) else "changed"
+                timesheet = _key_text(timelog_raw.loc[row_index, "Timesheet updated"])
+                notes = _key_text(timelog_raw.loc[row_index, "Notes"])
+            else:
+                status, row_index, current = "new", None, None
+            descriptions = [d for d in dict.fromkeys(rows["description"].map(_key_text)) if d]
+            fields = dict(zip(ROLLUP_KEYS, key))
+            proposals.append({
+                **fields,
+                "hours": hours, "hrs": hrs, "min": mins,
+                "descriptions": descriptions, "current_hours": current,
+                "current_timesheet": timesheet, "current_notes": notes,
+                "row_index": row_index, "status": status,
+                # The Week editor holds back a new row with a blank Category or Major task
+                # (apply_week_edits), because every chart that colours by category assumes
+                # neither is ever blank. The push has to respect the same rule, so it marks
+                # such a proposal rather than writing a half-filled row by the back door.
+                # It is a flag, not a refusal: the caller can still send one deliberately.
+                "unfiled": not all(fields[k] for k in ("project", "category", "major_task")),
+            })
+    proposals.sort(key=lambda p: (p["status"] == "same", -p["hours"]))
+    return proposals
+
+
+def apply_timelog_push(timelog_raw, proposals, week_start):
+    """Write the accepted proposals into the raw time-log frame: a matched row has its
+    Hrs / Min / Hours (exact) (and Timesheet / Notes, when given) overwritten in place; an
+    unmatched one is appended as a new row for that week. Every other row in the file --
+    including the week's rows the tracker knows nothing about -- is left exactly as it was.
+    A "duplicate" proposal has no single row to write to and is skipped here too, so
+    accepting one by mistake cannot pick a row at random.
+    Returns (updated frame, rows updated, rows appended)."""
+    week_start = pd.Timestamp(week_start).normalize()
+    out = timelog_raw.copy()
+    n_updated, to_add = 0, []
+
+    for p in proposals:
+        if p.get("status") == "duplicate":
+            continue
+        hrs, mins = int(p["hrs"]), int(p["min"])
+        idx = p.get("row_index")
+        if idx is not None and idx in out.index:
+            out.loc[idx, "Hrs"] = hrs
+            out.loc[idx, "Min"] = mins
+            out.loc[idx, "Hours (exact)"] = hrs + mins / 60
+            if p.get("timesheet"):
+                out.loc[idx, "Timesheet updated"] = p["timesheet"]
+            if p.get("notes") is not None:
+                out.loc[idx, "Notes"] = p["notes"]
+            n_updated += 1
+        else:
+            to_add.append(new_timelog_row(
+                week_start, project=p.get("project", ""), category=p.get("category", ""),
+                major_task=p.get("major_task", ""), hrs=hrs, mins=mins,
+                timesheet=p.get("timesheet", "No"), notes=p.get("notes", "") or "",
+            ))
+
+    if to_add:
+        out = pd.concat([out, pd.DataFrame(to_add)], ignore_index=True)
+    return out, n_updated, len(to_add)
+
+
+def tag_options(timelog_df, custom_tags, category_order=()):
+    """The three dropdown vocabularies the Week editor and the time tracker share: every
+    tag already used in the time log, plus the ones typed up front into custom_tags.json.
+
+    Categories come back in `category_order` -- the palette's own order, so the dropdown
+    reads the way the charts do -- with anything outside it sorted on the end; the other four
+    two are sorted. Returns {"projects", "categories", "major_tasks"}."""
+    def used(col):
+        if col not in getattr(timelog_df, "columns", []):
+            return set()
+        return {str(v).strip() for v in timelog_df[col].dropna().unique() if str(v).strip()}
+
+    projects = used("Project") | used("Weekly entry name (chart)")
+    categories = used("Category") | set(custom_tags.get("categories", []))
+    major_tasks = used("Major task name (chart)")
+
+    ordered_categories = [c for c in category_order if c in categories]
+    ordered_categories += sorted(categories - set(ordered_categories))
+    return {
+        "projects": sorted(projects | set(custom_tags.get("projects", []))),
+        "categories": ordered_categories,
+        "major_tasks": sorted(major_tasks | set(custom_tags.get("major_tasks", []))),
     }

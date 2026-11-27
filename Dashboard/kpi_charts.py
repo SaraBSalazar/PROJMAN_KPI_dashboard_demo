@@ -10,11 +10,11 @@ from plotly.subplots import make_subplots
 
 from kpi_data import (
     BASELINE, FINISHED_COLOR, GAIN_ADA_OUTPUT_LEVELS, GAIN_AUDIENCE_FLAGS, GAIN_GROUPS,
-    GAIN_STATE_LABELS, GRID, INK, MUTED,
+    GAIN_STATE_LABELS, GRID, INK, MIN_DRAWN_MINUTES, MUTED,
     RECEIVED_COLOR, TL_BASELINE, TL_CRITICAL, TL_GOOD, TL_GRID, TL_INK_MUTED, TL_INK_PRIMARY,
     TL_INK_SECONDARY, TL_PALETTE, TL_PALETTE_DARK, TL_SURFACE, WORKLOAD_COLOR,
     _name_variants, effective_received_date, effective_workload_start, format_hm,
-    project_hours_with_source, project_lookup_label,
+    format_week_label, project_hours_with_source, project_lookup_label,
 )
 
 # --- Light/dark theming ---------------------------------------------------------------------
@@ -2903,5 +2903,245 @@ def fig_cv_skill_matrix(skill_matrix, title="What each era was built on"):
         margin=dict(l=10, r=20, t=110, b=20),
         legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="right", x=1,
                     font=dict(size=14)),
+    )
+    return fig
+
+
+# --- Time tracker: the week calendar ---------------------------------------------------------
+# The one chart on the Time Tracker page. Everything else there is a table, on purpose: the
+# calendar answers "when did the day actually go", and a grid of numbers answers "how much
+# went where" -- two different questions, and a stacked bar trying to do both would answer
+# neither. Blocks are drawn from kpi_data.entry_segments, which has already cut anything
+# crossing midnight into one block per day and packed overlapping blocks into lanes.
+
+DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+# The share of a day column the blocks use (the rest is the air between days). A lane is
+# this divided by the number of lanes in the block's cluster, less LANE_GAP so two
+# side-by-side blocks are separated by surface rather than by touching edges.
+COLUMN_WIDTH = 0.88
+LANE_GAP = 0.04
+# A block shorter than this many minutes gets no inline label -- there is no room for text
+# that isn't clipped, and the tooltip carries it instead.
+LABEL_MIN_MINUTES = 25
+
+
+def _calendar_label(row, max_chars):
+    """What a block says on its face: the description if there is one, else what the entry
+    was filed under. Truncated to what the lane can hold rather than left to overflow."""
+    text = str(row.get("description") or "").strip() or str(row.get("project") or "").strip()
+    text = text or str(row.get("major_task") or "").strip()
+    if not text:
+        return ""
+    return text if len(text) <= max_chars else text[:max_chars - 1].rstrip() + "…"
+
+
+def _add_planned_layer(fig, planned):
+    """Calendar events as a wash behind the tracked blocks -- what the week was *supposed*
+    to be, with what it actually was drawn on top.
+
+    Deliberately not a palette hue: planned time isn't another category, and giving it one
+    would say it belongs in the same comparison as Projects and ADAorg. It gets ink at low
+    opacity and the full column width, so a tracked block always reads as sitting on it."""
+    if not planned:
+        return
+    wash, edge = _rgba(TL_INK_SECONDARY, 0.13), _rgba(TL_INK_SECONDARY, 0.40)
+    fig.add_trace(go.Bar(
+        x=[b["day"] for b in planned],
+        base=[b["start_min"] for b in planned],
+        y=[max(b["end_min"] - b["start_min"], MIN_DRAWN_MINUTES) for b in planned],
+        offset=-0.46, width=0.92,
+        name="Planned (calendar)", legendgroup="__planned__",
+        marker=dict(color=wash, cornerradius=3, line=dict(color=edge, width=1)),
+        text=[b["title"] if b["end_min"] - b["start_min"] >= LABEL_MIN_MINUTES else ""
+              for b in planned],
+        textposition="inside", insidetextanchor="start",
+        insidetextfont=dict(size=10, color=TL_INK_SECONDARY),
+        hovertext=[f"<b>{b['title']}</b><br>calendar · {format_hm(b['hours'])}" for b in planned],
+        hoverinfo="text",
+    ))
+
+
+def fig_week_calendar(segments, week_start, color_by="category", colors=None,
+                      now=None, title=None, height=None, planned=None):
+    """The week as a calendar grid: one column per day, time of day down the side, one
+    rounded block per tracked stretch, colored by `color_by` ("category" or "project").
+
+    `colors` maps a `color_by` value to a hex from the dashboard's own validated palette, so
+    a category is the same color here as it is in every chart on the Overview page. A value
+    with no entry in it falls back to the muted ink rather than to a generated hue.
+
+    `now` draws a thin "now" rule across today's column when today is in this week, and is
+    also what entry_segments used to give the running block its height -- so a timer that is
+    still going is drawn growing toward that line.
+
+    `planned` is kpi_calendar.planned_blocks() output -- the work calendar's own events,
+    drawn as a wash behind everything so the week reads as "this is what was meant to
+    happen, and this is what did". They are never part of `colors`: planned time is not
+    another category to compare against the real ones.
+
+    `height` defaults to roughly a fixed number of pixels per hour SHOWN, so an hour is the
+    same height whether the week spans a working day or (because something ran past midnight)
+    the whole 24. A fixed height instead squashes the second case until a 30-minute block has
+    no room for its own label.
+
+    Day totals ride in the column headers and the week total in the subtitle: they are the
+    numbers you read a calendar for, and they belong on the figure rather than in a caption
+    under it."""
+    colors = colors or {}
+    week_start = pd.Timestamp(week_start).normalize()
+    day_totals = [0.0] * 7
+    if len(segments):
+        for day, hours in segments.groupby("day")["hours"].sum().items():
+            if 0 <= int(day) <= 6:
+                day_totals[int(day)] = float(hours)
+    week_total = sum(day_totals)
+
+    title = title or f"Week of {format_week_label(week_start, week_start + pd.Timedelta(6, 'D'))}"
+    fig = go.Figure()
+
+    if not len(segments) and not planned:
+        fig.update_layout(**base_layout(title, width=None, height=360,
+                                        subtitle="Nothing tracked this week yet"),
+                          margin=dict(l=60, r=20, t=70, b=30))
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+        _empty(fig, "Start the timer, or add an entry by hand, and it shows up here")
+        return fig
+
+    # Added before the tracked traces so it sits underneath them.
+    _add_planned_layer(fig, planned)
+
+    seg = segments.copy()
+    group_order = []
+    seg["_group"] = seg[color_by].map(lambda v: str(v or "").strip() or "(unlabelled)")         if len(seg) else pd.Series(dtype=object)
+    # Floored so a two-minute entry is still a visible, hoverable block. Only the drawn
+    # height moves; `hours` -- what every total on the page is summed from -- stays exact.
+    if len(seg):
+        seg["_draw_min"] = (seg["end_min"] - seg["start_min"]).clip(lower=MIN_DRAWN_MINUTES)
+        lane_width = COLUMN_WIDTH / seg["lanes"].clip(lower=1)
+        seg["_width"] = (lane_width - LANE_GAP).clip(lower=0.04)
+        seg["_offset"] = -COLUMN_WIDTH / 2 + seg["lane"] * lane_width
+        # Groups ordered by how much of the week they account for, so the legend reads as
+        # the week's own ranking and the biggest block of colour is the first swatch.
+        group_order = list(
+            seg.groupby("_group")["hours"].sum().sort_values(ascending=False).index)
+
+    for group in group_order:
+        sub = seg[seg["_group"] == group]
+        fill = colors.get(group) or TL_INK_MUTED
+        ink = _label_on(fill)
+        labels, hovers = [], []
+        for _, row in sub.iterrows():
+            drawn = row["_draw_min"]
+            # Two lanes already halve the width; past that there is no room for text that
+            # would not be clipped, so the label drops out and the tooltip carries it.
+            max_chars = int(26 / max(int(row["lanes"]), 1))
+            label = (_calendar_label(row, max_chars)
+                     if drawn >= LABEL_MIN_MINUTES and row["lanes"] <= 2 else "")
+            # The still-running block is italic rather than a different colour: colour here
+            # already means "what this is filed under", and a second meaning for it is
+            # exactly what makes a chart unreadable.
+            labels.append(f"<i>{label}</i>" if label and row["running"] else label)
+            day = week_start + pd.Timedelta(int(row["day"]), "D")
+            span = (f"{(day + pd.Timedelta(minutes=row['start_min'])).strftime('%H:%M')}"
+                    f"–{(day + pd.Timedelta(minutes=row['end_min'])).strftime('%H:%M')}")
+            filed = " · ".join(v for v in (str(row.get("project") or "").strip(),
+                                           str(row.get("category") or "").strip(),
+                                           str(row.get("major_task") or "").strip()) if v)
+            extra = " · ".join(v for v in (str(row.get("tool") or "").strip(),
+                                           str(row.get("special_project") or "").strip()) if v)
+            desc = str(row.get("description") or "").strip() or "(no description)"
+            hovers.append(
+                f"<b>{desc}</b><br>{filed or '(unfiled)'}"
+                + (f"<br>{extra}" if extra else "")
+                + f"<br>{span} · {format_hm(row['hours'])}"
+                + ("<br><i>still running</i>" if row["running"] else "")
+            )
+
+        fig.add_trace(go.Bar(
+            x=sub["day"], base=sub["start_min"], y=sub["_draw_min"],
+            offset=sub["_offset"], width=sub["_width"],
+            name=group, legendgroup=group,
+            # The surface-coloured hairline IS the 2px gap between touching blocks -- back-
+            # to-back entries would otherwise read as one long block. A contrasting border
+            # would add ink that isn't data; this only subtracts.
+            marker=dict(color=fill, cornerradius=3,
+                        line=dict(color=TL_SURFACE, width=1.5)),
+            text=labels, textposition="inside", insidetextanchor="start",
+            insidetextfont=dict(size=10, color=ink),
+            hovertext=hovers, hoverinfo="text",
+        ))
+
+    edges = ([(seg["start_min"].min(), (seg["start_min"] + seg["_draw_min"]).max())]
+             if len(seg) else [])
+    edges += [(min(b["start_min"] for b in planned), max(b["end_min"] for b in planned))]         if planned else []
+    starts, ends = min(e[0] for e in edges), max(e[1] for e in edges)
+    lo = max(0, math.floor(starts / 60) * 60 - 30)
+    hi = min(1440, math.ceil(ends / 60) * 60 + 30)
+    if hi - lo < 360:  # never zoom tighter than a 6-hour window -- a two-entry day otherwise
+        hi = min(1440, lo + 360)  # renders as two enormous slabs with no sense of a day
+        lo = max(0, hi - 360)
+
+    tickvals = list(range(int(math.ceil(lo / 60) * 60), int(hi) + 1, 60))
+    fig.update_yaxes(
+        range=[hi, lo],  # reversed by hand rather than by autorange: with explicit bar bases
+        tickvals=tickvals,  # an autoranged reversal also flips where `base` is measured from
+        ticktext=[f"{v // 60:02d}:00" for v in tickvals],
+        showgrid=True, gridcolor=TL_GRID, gridwidth=1, zeroline=False,
+        tickfont=dict(size=11, color=TL_INK_MUTED),
+    )
+    fig.update_xaxes(
+        range=[-0.5, 6.5], tickvals=list(range(7)),
+        ticktext=[f"<b>{DAY_NAMES[d]} {(week_start + pd.Timedelta(d, 'D')).day}</b>"
+                  f"<br><span style='font-size:11px'>"
+                  f"{format_hm(day_totals[d]) if day_totals[d] else '—'}</span>"
+                  for d in range(7)],
+        side="top", showgrid=False, zeroline=False,
+        tickfont=dict(size=12, color=TL_INK_SECONDARY),
+    )
+    # Day separators: a linear axis can only put gridlines on its ticks, which are the column
+    # centres -- the lines belong between the columns, so they are drawn as shapes.
+    for x in [d + 0.5 for d in range(6)]:
+        fig.add_shape(type="line", x0=x, x1=x, y0=lo, y1=hi, layer="below",
+                      line=dict(color=TL_GRID, width=1))
+
+    if now is not None:
+        now = pd.Timestamp(now)
+        day = int((now.normalize() - week_start).days)
+        if 0 <= day <= 6:
+            now_min = now.hour * 60 + now.minute + now.second / 60
+            if lo <= now_min <= hi:
+                # Deliberately ink, not a status colour: "now" is a reference mark, and
+                # TL_GOOD/TL_CRITICAL mean good/bad everywhere else in this dashboard.
+                fig.add_shape(type="line", x0=day - 0.5, x1=day + 0.5, y0=now_min, y1=now_min,
+                              line=dict(color=TL_INK_SECONDARY, width=1))
+                # The label sits on the far side of the line from the blocks. The axis runs
+                # downward, so "top" anchoring puts it in the part of the day that hasn't
+                # happened yet -- which is empty by definition, and the one place it can't
+                # land on top of a block.
+                fig.add_annotation(x=day - 0.48, y=now_min, text="now", showarrow=False,
+                                   xanchor="left", yanchor="top",
+                                   font=dict(size=10, color=TL_INK_SECONDARY))
+
+    fig.update_layout(
+        **base_layout(title, width=None,
+                      height=height or int(min(max((hi - lo) / 60 * 46, 420), 1150)),
+                      subtitle=f"{format_hm(week_total)} tracked · "
+                               f"{len(segments['id'].unique()) if len(segments) else 0} entries"
+                               + (f" · {format_hm(sum(b['hours'] for b in planned))} planned"
+                                  if planned else "")),
+        barmode="overlay", bargap=0,
+        margin=dict(l=60, r=20, t=110, b=60),
+        # Every inside label is drawn at one size, and one that still doesn't fit its block is
+        # HIDDEN rather than shrunk to illegibility or clipped. This is the "measure first"
+        # half of the label rule: the tooltip carries what the block has no room to say.
+        uniformtext=dict(minsize=9, mode="hide"),
+        # A legend is the dependable identity channel: the blocks are labelled with what was
+        # typed on them, not with what they are coloured by, so colour needs its own key. One
+        # group means one colour, and the title already says what is plotted.
+        showlegend=len(group_order) + bool(planned) > 1,
+        legend=dict(orientation="h", yanchor="top", y=-0.02, xanchor="left", x=0,
+                    font=dict(size=12), title=dict(text="")),
     )
     return fig

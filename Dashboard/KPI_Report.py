@@ -42,6 +42,7 @@ pg = st.navigation({
         st.Page("pages/7_CV.py", title="CV", icon=":material/badge:"),
     ],
     "Data": [
+        st.Page("pages/8_Time_Tracker.py", title="Time Tracker", icon=":material/timer:"),
         st.Page("pages/4_Add_Data.py", title="Add Data", icon=":material/edit_note:"),
     ],
 })

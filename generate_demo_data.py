@@ -18,7 +18,7 @@ mistaken for a real project.
 import json
 import sys
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import openpyxl
@@ -352,6 +352,92 @@ def build_time_log(projects):
           f"{df['Hours (exact)'].sum():.0f}h total, {df['Hours (exact)'].sum()/52:.1f}h/week avg)")
 
 
+# --- 2b) Stopwatch store: Data/time_entries.csv --------------------------------------------
+# The Time Tracker page's own store: one row per STRETCH of work with real start and end
+# timestamps, as against track_time.csv's one row per project/category/major task per week.
+# Only the last few weeks are generated -- the tracker is a day-to-day tool, and a year of
+# fake stopwatch entries would say the dashboard had been stopwatched all year, which is not
+# the story the demo is telling. Times are naive local ISO text, the shape kpi_data reads.
+TIME_ENTRY_COLS = ["id", "start", "end", "project", "category", "major_task",
+                   "description", "notes"]
+TRACKER_WEEKS = 3
+DAY_SHAPES = [  # (start hour, start minute, minutes) -- a plausible working day
+    (9, 15, 75), (10, 45, 50), (11, 45, 35), (14, 0, 95), (15, 50, 60), (17, 5, 45),
+]
+TRACKER_DESCRIPTIONS = {
+    "code": ["intake parser", "rewriting the normalisation step", "debugging the merge",
+             "pipeline tidy-up", "unit tests for the loader"],
+    "Plan/Study": ["reading the method paper", "sketching the analysis plan",
+                   "comparing two approaches"],
+    "Report": ["first draft of the report", "figures for the report", "report revisions"],
+    "Review": ["reviewing the draft", "second pass on the results"],
+    "ProjectOrg": ["filing the project notes", "chasing the sample sheet"],
+    "Meetings/Comms": ["catch-up with the group", "email round"],
+    "Internal Meeting": ["team meeting"], "External Meeting": ["call with the requester"],
+    "Internal org": ["inbox and admin"], "Burocracy": ["expense forms"],
+    "Seminar": ["department seminar"], "Trainning": ["course exercises"],
+}
+
+
+def build_time_entries(projects):
+    """A few recent weeks of stopwatch entries, filed with the same project / category /
+    major task vocabulary the time log uses -- so the Time Tracker's "send this week to the
+    time log" panel has something real to propose, and the week views have something to
+    draw. The most recent entry is left RUNNING (blank end) only if that would land on a
+    weekday within working hours; a demo that opens with a timer that has apparently been
+    going since the weekend is just confusing."""
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    tags = [p["Project tag"] for p in projects] or ["DEMO_001"]
+
+    rows, n = [], 0
+    for week in range(TRACKER_WEEKS - 1, -1, -1):
+        week_monday = monday - timedelta(weeks=week)
+        for weekday in range(5):
+            day = week_monday + timedelta(days=weekday)
+            if day > today:
+                continue
+            for hour, minute, length in DAY_SHAPES:
+                if random.random() < 0.25:        # not every slot every day
+                    continue
+                start = datetime(day.year, day.month, day.day, hour, minute)
+                start += timedelta(minutes=random.randint(-10, 10))
+                end = start + timedelta(minutes=length + random.randint(-15, 20))
+                if start > datetime.now():
+                    continue
+                if random.random() < 0.72:
+                    category, major_task = "Projects", random.choice(PROJECT_MAJOR_TASKS)
+                    tag = random.choice(tags)
+                else:
+                    category = random.choice(list(NON_PROJECT_MAJOR_TASKS))
+                    major_task = random.choice(NON_PROJECT_MAJOR_TASKS[category])
+                    tag = category
+                n += 1
+                rows.append({
+                    "id": f"te_demo{n:04d}",
+                    "start": start.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "end": end.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "project": tag, "category": category, "major_task": major_task,
+                    "description": random.choice(
+                        TRACKER_DESCRIPTIONS.get(major_task, ["work"])),
+                    "notes": "",
+                })
+
+    # One timer left running, but only when "now" is somewhere a timer plausibly would be.
+    now = datetime.now()
+    if rows and now.weekday() < 5 and 8 <= now.hour < 19:
+        rows[-1]["start"] = (now - timedelta(minutes=random.randint(12, 48))
+                             ).strftime("%Y-%m-%dT%H:%M:%S")
+        rows[-1]["end"] = ""
+
+    path = DATA_DIR / "time_entries.csv"
+    pd.DataFrame(rows, columns=TIME_ENTRY_COLS).to_csv(
+        path, sep=";", index=False, encoding="utf-8-sig")
+    print(f"wrote {path} ({len(rows)} stretches over the last {TRACKER_WEEKS} weeks"
+          + (", one still running)" if rows and not rows[-1]["end"] else ")"))
+    return rows
+
+
 # --- 3) Special projects: ratings + task checklists ---------------------------------------
 SPECIAL_PROJECTS = [
     ("01 - Reach more research groups", "Open Analysis Toolkit", "Reusable analysis toolkit open to any group.",
@@ -537,7 +623,7 @@ def build_cv_outputs():
 # --- 4c) CV content: an invented career for the CV page ----------------------------------
 # Every name, place and paper below is made up, in the same "(example)" register as the rest
 # of this file -- the point is to show the page working, not to publish anyone's record. The
-# GIMM/ADA half of that page is never stored anyway: it is computed from the tracker, the
+# service half of that page is never stored anyway: it is computed from the tracker, the
 # tools inventory and the two output stores on every load, so this file holds only the parts
 # a CV knows on its own.
 DEMO_CV_EXPERIENCE = [
@@ -1090,6 +1176,11 @@ def build_empty(year=None):
         pd.DataFrame(columns=MEETING_COLS).to_excel(xl, sheet_name=f"{year}_CALENDAR_meetings", index=False)
     print(f"wrote {path} (0 projects, 0 meetings)")
 
+    te_path = DATA_DIR / "time_entries.csv"
+    pd.DataFrame(columns=TIME_ENTRY_COLS).to_csv(
+        te_path, sep=";", index=False, encoding="utf-8-sig")
+    print(f"wrote {te_path} (0 rows)")
+
     tl_path = DATA_DIR / "track_time.csv"
     pd.DataFrame(columns=TIMELOG_COLS).to_csv(tl_path, sep=";", index=False, encoding="utf-8-sig")
     print(f"wrote {tl_path} (0 rows)")
@@ -1133,6 +1224,7 @@ if __name__ == "__main__":
     else:
         projects = build_project_tracker()
         build_time_log(projects)
+        build_time_entries(projects)
         build_special_projects()
         build_beyond_projects()
         build_publications()

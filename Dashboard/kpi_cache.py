@@ -47,6 +47,20 @@ def load_timelog(dark=False):
 
 
 @st.cache_data(show_spinner=False)
+def _load_time_entries(mtime_key):
+    return kd.load_time_entries()
+
+
+def load_time_entries():
+    """The stopwatch store behind the Time Tracker page. st.cache_data hands back a copy per
+    caller, so the page's start/stop/edit paths are free to mutate what they get before
+    writing it back -- which is exactly what they all do. The file changes on nearly every
+    interaction with that page, so this mostly earns its keep on the OTHER pages' reruns and
+    on the tracker's own once-a-second running-clock fragment."""
+    return _load_time_entries(_mtime(kd.TIME_ENTRIES_PATH))
+
+
+@st.cache_data(show_spinner=False)
 def _discover_periods(mtime_key):
     return kd.discover_periods()
 

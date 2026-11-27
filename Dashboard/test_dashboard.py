@@ -31,6 +31,7 @@ PAGES = [
     "pages/5_Gains.py",
     "pages/6_Publications_Courses.py",
     "pages/7_CV.py",
+    "pages/8_Time_Tracker.py",
 ]
 
 
