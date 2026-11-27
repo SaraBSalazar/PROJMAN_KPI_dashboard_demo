@@ -3525,6 +3525,21 @@ def save_time_entries(df):
     out[TIME_ENTRY_COLS].to_csv(TIME_ENTRIES_PATH, sep=";", index=False, encoding="utf-8-sig")
 
 
+def _stored(entries):
+    """Just the columns the file holds, dropping the derived ones load_time_entries adds.
+
+    Everything that appends a row concatenates onto this rather than onto the loaded frame:
+    concatenating a plain dict-frame onto one carrying datetime64 columns makes pandas
+    invent an NaT for them, which it builds with NumPy's deprecated "generic" timedelta unit
+    and warns about every single time. Nothing wants those columns in the result anyway --
+    save_time_entries would drop them -- so they are gone before the concat, not after."""
+    out = entries.copy()
+    for col in TIME_ENTRY_COLS:
+        if col not in out.columns:
+            out[col] = ""
+    return out[TIME_ENTRY_COLS]
+
+
 def _is_running(entries):
     """Running-ness read off the stored `end` column rather than the derived `running` one,
     so these helpers also work on a frame rebuilt by hand (the editor's save path) that
@@ -3569,7 +3584,8 @@ def start_entry(entries, now, **fields):
     row["id"] = new_entry_id()
     row["start"] = iso_stamp(now)
     row["end"] = ""
-    return pd.concat([out, pd.DataFrame([row])], ignore_index=True)
+    return pd.concat([_stored(out), pd.DataFrame([row], columns=TIME_ENTRY_COLS)],
+                     ignore_index=True)
 
 
 def add_entry(entries, start, end, **fields):
@@ -3583,7 +3599,8 @@ def add_entry(entries, start, end, **fields):
     row.update({k: str(v or "").strip() for k, v in fields.items() if k in TIME_ENTRY_COLS})
     row["id"] = fields.get("id") or new_entry_id()
     row["start"], row["end"] = iso_stamp(start), iso_stamp(end)
-    return pd.concat([entries, pd.DataFrame([row])], ignore_index=True)
+    return pd.concat([_stored(entries), pd.DataFrame([row], columns=TIME_ENTRY_COLS)],
+                     ignore_index=True)
 
 
 def delete_entries(entries, ids):
@@ -3620,7 +3637,8 @@ def split_entry(entries, entry_id, stretches, keep_running=False):
         row["end"] = "" if (keep_running and i == len(stretches) - 1) else iso_stamp(end)
         rows.append(row)
     if rows:
-        out = pd.concat([out, pd.DataFrame(rows, columns=TIME_ENTRY_COLS)], ignore_index=True)
+        out = pd.concat([_stored(out), pd.DataFrame(rows, columns=TIME_ENTRY_COLS)],
+                        ignore_index=True)
     return out
 
 

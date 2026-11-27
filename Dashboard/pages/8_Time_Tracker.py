@@ -206,6 +206,185 @@ def save_entries(frame, success, remember=True):
     st.rerun()
 
 
+
+def _clear_selection():
+    """Forget the clicked block AND every widget the panel built for it.
+
+    The widgets have to go too: a keyed widget's stored value beats the `value=` it is given
+    on the next run, so leaving them behind means reopening a block you have since saved
+    shows the values you typed last time rather than the ones on disk."""
+    st.session_state.pop("tt_selected", None)
+    for key in [k for k in st.session_state
+                if k.startswith(("tt_sel_", "tt_nudge_"))]:
+        st.session_state.pop(key, None)
+
+
+def _nudge(time_key, date_key, minutes):
+    """Move one end of the block by `minutes`, writing straight to the time box's own state.
+
+    Runs as a button's `on_click`, which is the only moment Streamlit allows this: a widget's
+    key can be written BEFORE the widget is built, never after, and the nudge buttons are
+    drawn below the boxes they move. A callback runs ahead of the whole next pass, so it both
+    sees what is currently typed and is allowed to change it. Keeping the value in a shadow
+    variable instead -- the obvious first try -- gets quietly ignored, because a keyed widget
+    reports what ITS state holds and Save would read the untouched original.
+
+    Refuses to cross midnight: the panel has one date box serving both ends, so moving the
+    day to follow one of them would drag the other with it."""
+    current, day = st.session_state.get(time_key), st.session_state.get(date_key)
+    if current is None or day is None:
+        return
+    moved = pd.Timestamp.combine(day, current) + pd.Timedelta(minutes, "m")
+    if moved.date() != day:
+        st.session_state["tt_nudge_blocked"] = True
+        return
+    st.session_state[time_key] = moved.time()
+
+
+def render_block_editor(selected, events):
+    """The panel under the calendar for whichever block was last clicked.
+
+    A tracked block opens as itself -- times, tags, description -- with ±15-minute nudges on
+    each end, which is what dragging an edge would have been for. A calendar block can't be
+    edited (the dashboard only ever reads a calendar), so it opens as an offer to track the
+    meeting instead, prefilled with its own times."""
+    kind, ident = selected
+
+    # --- a calendar event -------------------------------------------------------------------
+    if kind == "planned":
+        if not (0 <= ident < len(events)):
+            _clear_selection()
+            return
+        event = events[ident]
+        already = kcal.tracked_overlap(event, entries)
+        with st.container(border=True):
+            head, close = st.columns([6, 1])
+            head.markdown(f"#### 📅 {html.escape(event['title'])}")
+            head.caption(f"{event['from']:%A %d %B, %H:%M}–{event['to']:%H:%M} · "
+                         f"{kd.format_hm(event['hours'])} in the calendar"
+                         + (f" · **{kd.format_hm(already)} already tracked**" if already > 0.05 else ""))
+            if close.button("✕", key=f"tt_sel_close_planned_{ident}", help="Close this panel"):
+                _clear_selection()
+                st.rerun()
+            st.caption("Calendar events are drawn for comparison and count toward nothing. "
+                       "This is where one becomes real tracked time — and it's still an "
+                       "ordinary entry afterwards, editable and deletable like any other.")
+            t1, t2, t3 = st.columns(3)
+            p = t1.selectbox("Project", options["projects"], index=None, accept_new_options=True,
+                             key=f"tt_sel_project_{ident}", placeholder="pick or type")
+            c = t2.selectbox("Category", options["categories"], index=None, accept_new_options=True,
+                             key=f"tt_sel_category_{ident}", placeholder="pick or type")
+            t = t3.selectbox("Major task", options["major_tasks"], index=None,
+                             accept_new_options=True, key=f"tt_sel_task_{ident}", placeholder="pick or type")
+            if st.button("➕ Track this meeting", key=f"tt_sel_track_{ident}", type="primary"):
+                _clear_selection()
+                save_entries(
+                    kd.add_entry(entries, event["from"], event["to"],
+                                 description=event["title"].replace("\n", " "),
+                                 project=p, category=c, major_task=t),
+                    f"Tracked “{event['title'][:40]}”. Its times are the calendar's — "
+                    "change them below if it ran over.")
+        return
+
+    # --- a tracked stretch --------------------------------------------------------------------
+    match = entries[entries["id"] == ident]
+    if match.empty:
+        _clear_selection()
+        return
+    row = match.iloc[0]
+    running_now = bool(row["running"])
+
+    start = pd.Timestamp(row["start_dt"])
+    end = pd.Timestamp(row["end_dt"] if pd.notna(row["end_dt"]) else NOW)
+
+    with st.container(border=True):
+        head, close = st.columns([6, 1])
+        head.markdown(f"#### ✏️ {html.escape(str(row['description']).strip() or '(no description)')}")
+        head.caption(f"{start:%A %d %B} · {kd.format_hm(max((end - start).total_seconds() / 3600, 0))}"
+                     + (" · still running" if running_now else ""))
+        if close.button("✕", key=f"tt_sel_close_{ident}", help="Close this panel"):
+            _clear_selection()
+            st.rerun()
+
+        if running_now:
+            st.caption("This timer is still going, so only its start can be moved — stop it "
+                       "first to set an end.")
+
+        def _default(key, value):
+            """A keyed widget already holding a value -- one a nudge wrote -- must not ALSO
+            be handed a default, or Streamlit warns on every rerun that two sources are
+            fighting over it. Its own state wins either way; this just stops saying so."""
+            return {} if key in st.session_state else {"value": value}
+
+        d1, d2, d3 = st.columns([1.4, 1, 1])
+        date_key = f"tt_sel_date_{ident}"
+        start_key, end_key = f"tt_sel_start_{ident}", f"tt_sel_end_{ident}"
+        new_date = d1.date_input("Date", format="DD/MM/YYYY", key=date_key,
+                                 **_default(date_key, start.date()))
+        new_start = d2.time_input("Start", step=300, key=start_key,
+                                  **_default(start_key, start.time()))
+        new_end = d3.time_input("End", step=300, key=end_key, disabled=running_now,
+                                **_default(end_key, end.time()))
+
+        # Drawn after the inputs so a nudge builds on what is typed in them right now.
+        typed_start = pd.Timestamp.combine(new_date, new_start)
+        typed_end = pd.Timestamp.combine(new_date, new_end)
+        if typed_end <= typed_start:
+            typed_end += pd.Timedelta(1, "D")
+
+        n1, n2, n3, n4, n5 = st.columns([1, 1, 1, 1, 3])
+        for col, label, which, delta, off in (
+            (n1, "Start −15", "start", -15, False), (n2, "Start +15", "start", 15, False),
+            (n3, "End −15", "end", -15, running_now), (n4, "End +15", "end", 15, running_now),
+        ):
+            col.button(label, key=f"tt_nudge_{which}{delta}_{ident}", disabled=off,
+                       on_click=_nudge, args=(f"tt_sel_{which}_{ident}", date_key, delta))
+        if st.session_state.pop("tt_nudge_blocked", False):
+            n5.caption("⚠️ That would cross midnight — type the time in instead.")
+
+        g1, g2, g3 = st.columns(3)
+        sel_project = g1.selectbox(
+            "Project", options["projects"], key=f"tt_sel_e_project_{ident}", accept_new_options=True,
+            index=options["projects"].index(row["project"]) if row["project"] in options["projects"] else None,
+            placeholder="pick or type")
+        sel_category = g2.selectbox(
+            "Category", options["categories"], key=f"tt_sel_e_category_{ident}", accept_new_options=True,
+            index=options["categories"].index(row["category"]) if row["category"] in options["categories"] else None,
+            placeholder="pick or type")
+        sel_task = g3.selectbox(
+            "Major task", options["major_tasks"], key=f"tt_sel_e_task_{ident}", accept_new_options=True,
+            index=options["major_tasks"].index(row["major_task"]) if row["major_task"] in options["major_tasks"] else None,
+            placeholder="pick or type")
+
+        i1, i2 = st.columns(2)
+        sel_desc = i1.text_input("Description", value=str(row["description"]), key=f"tt_sel_e_desc_{ident}")
+        sel_notes = i2.text_input("Notes", value=str(row["notes"]), key=f"tt_sel_e_notes_{ident}")
+
+        b1, b2, b3, _rest = st.columns([1.1, 1.5, 1, 2.5])
+        if b1.button("💾 Save", key=f"tt_sel_save_{ident}", type="primary"):
+            updated = kd.delete_entries(entries, [ident])
+            updated = kd.add_entry(
+                updated, typed_start,
+                typed_end if not running_now else typed_start + pd.Timedelta(1, "m"),
+                id=ident, description=sel_desc, notes=sel_notes, project=sel_project,
+                category=sel_category, major_task=sel_task)
+            if running_now:
+                updated.loc[updated["id"] == ident, "end"] = ""  # reopened: still running
+            _clear_selection()
+            save_entries(updated, "Block updated.")
+        if b2.button("⏵ Start a new timer like this", key=f"tt_sel_again_{ident}",
+                     help="Same tags and description, starting now.", disabled=running_now):
+            _clear_selection()
+            save_entries(
+                kd.start_entry(entries, pd.Timestamp.now().floor("s"), description=sel_desc,
+                               project=sel_project, category=sel_category, major_task=sel_task,
+                               notes=sel_notes),
+                "Timer started from that block.")
+        if b3.button("🗑 Delete", key=f"tt_sel_delete_{ident}"):
+            _clear_selection()
+            save_entries(kd.delete_entries(entries, [ident]), "Block deleted.", remember=False)
+
+
 flash = st.session_state.pop("tt_flash", None)
 if flash:
     st.success(flash)
@@ -459,16 +638,36 @@ with tab_cal:
                 f"refreshed just now ({cal_payload['error']}). Everything else on this page is "
                 f"local files and is unaffected.", icon="📶")
 
-    st.plotly_chart(
+    # The chart reports clicks back (on_select="rerun"); kc.calendar_selection turns a
+    # clicked point into ("tracked", entry id) or ("planned", event index) via the customdata
+    # each bar carries. The pick is then kept in session_state rather than read fresh from
+    # the chart every time, so the panel below survives its own buttons' reruns.
+    chart_event = st.plotly_chart(
         kc.fig_week_calendar(segments, week_start, color_by=color_by,
                              colors=colors_for(color_by), now=NOW,
                              title=f"Week of {week_label}",
-                             planned=planned_blocks if show_planned else None),
-        width="stretch", key="tt_calendar")
-    st.caption("One block per stretch of work, placed at the hour it happened. Overlapping "
-               "stretches sit side by side; a stretch running past midnight is drawn in both "
-               "days. Hover a block for the description, how it's filed, and its exact span. "
-               "Day totals are in the column headers.")
+                             planned=planned_blocks if show_planned else None,
+                             selected=st.session_state.get("tt_selected")),
+        width="stretch", key="tt_calendar",
+        on_select="rerun" if not READONLY else "ignore", selection_mode="points")
+
+    if not READONLY:
+        clicked = kc.calendar_selection(chart_event)
+        if clicked is not None and clicked != st.session_state.get("tt_selected"):
+            # _clear_selection first: the panel's widgets are scoped to the block they were
+            # built for, and leaving the previous block's behind is what would show one
+            # stretch's times under another one's name.
+            _clear_selection()
+            st.session_state["tt_selected"] = clicked
+            st.rerun()
+
+    st.caption("One block per stretch of work, placed at the hour it happened. **Click one to "
+               "edit it.** Overlapping stretches sit side by side; a stretch running past "
+               "midnight is drawn in both days. Hover for the description, how it's filed, and "
+               "the exact span. Day totals are in the column headers.")
+
+    if not READONLY and st.session_state.get("tt_selected"):
+        render_block_editor(st.session_state["tt_selected"], planned_events)
 
     if show_planned:
         share = f" — {tracked_hours / planned_hours:.0%} of it" if planned_hours else ""

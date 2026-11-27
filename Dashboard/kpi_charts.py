@@ -2946,7 +2946,19 @@ def _calendar_label(row, max_chars):
     return _truncate(text or str(row.get("major_task") or "").strip(), max_chars)
 
 
-def _add_planned_layer(fig, planned):
+def _selection_outline(kinds_ids, selected, base_color, base_width):
+    """Per-point marker-line colour and width: the clicked block gets a visible ring, every
+    other one keeps the hairline it had. Plotly takes arrays for both, which is what lets one
+    bar in a trace look different without splitting the trace in two."""
+    colors, widths = [], []
+    for key in kinds_ids:
+        hit = selected is not None and tuple(selected) == tuple(key)
+        colors.append(TL_INK_PRIMARY if hit else base_color)
+        widths.append(2.5 if hit else base_width)
+    return colors, widths
+
+
+def _add_planned_layer(fig, planned, selected=None):
     """Calendar events as a wash behind the tracked blocks -- what the week was *supposed*
     to be, with what it actually was drawn on top.
 
@@ -2963,14 +2975,21 @@ def _add_planned_layer(fig, planned):
     packed = pack_lanes(pd.DataFrame(planned))
     lane_width = PLANNED_WIDTH / packed["lanes"].clip(lower=1)
     wash, edge = _rgba(TL_INK_SECONDARY, 0.13), _rgba(TL_INK_SECONDARY, 0.40)
+    # customdata is what a click comes back as: ("planned", index into the event list). The
+    # index rather than the block, because an event past midnight is two blocks and clicking
+    # either must offer the whole meeting.
+    keys = [("planned", int(row["event_index"])) for _, row in packed.iterrows()]
+    line_colors, line_widths = _selection_outline(keys, selected, edge, 1)
     fig.add_trace(go.Bar(
+        customdata=[list(k) for k in keys],
         x=packed["day"],
         base=packed["start_min"],
         y=(packed["end_min"] - packed["start_min"]).clip(lower=MIN_DRAWN_MINUTES),
         offset=-PLANNED_WIDTH / 2 + packed["lane"] * lane_width,
         width=(lane_width - LANE_GAP).clip(lower=0.04),
         name="Planned (calendar)", legendgroup="__planned__",
-        marker=dict(color=wash, cornerradius=3, line=dict(color=edge, width=1)),
+        marker=dict(color=wash, cornerradius=3,
+                    line=dict(color=line_colors, width=line_widths)),
         # Truncated to what the lane can hold, the same way a tracked block's label is. Left
         # full, a half-width lane fits no title at all and uniformtext hides both of them --
         # which is how a double-booked hour ends up with two anonymous grey boxes.
@@ -2986,7 +3005,7 @@ def _add_planned_layer(fig, planned):
 
 
 def fig_week_calendar(segments, week_start, color_by="category", colors=None,
-                      now=None, title=None, height=None, planned=None):
+                      now=None, title=None, height=None, planned=None, selected=None):
     """The week as a calendar grid: one column per day, time of day down the side, one
     rounded block per tracked stretch, colored by `color_by` ("category" or "project").
 
@@ -3002,6 +3021,10 @@ def fig_week_calendar(segments, week_start, color_by="category", colors=None,
     drawn as a wash behind everything so the week reads as "this is what was meant to
     happen, and this is what did". They are never part of `colors`: planned time is not
     another category to compare against the real ones.
+
+    `selected` is a ("tracked", entry id) or ("planned", event index) pair -- whatever was
+    last clicked. That block gets a ring instead of its hairline, so the edit panel under the
+    chart is visibly attached to a block rather than floating free of it.
 
     `height` defaults to roughly a fixed number of pixels per hour SHOWN, so an hour is the
     same height whether the week spans a working day or (because something ran past midnight)
@@ -3033,7 +3056,7 @@ def fig_week_calendar(segments, week_start, color_by="category", colors=None,
         return fig
 
     # Added before the tracked traces so it sits underneath them.
-    _add_planned_layer(fig, planned)
+    _add_planned_layer(fig, planned, selected)
 
     seg = segments.copy()
     group_order = []
@@ -3067,8 +3090,8 @@ def fig_week_calendar(segments, week_start, color_by="category", colors=None,
             # exactly what makes a chart unreadable.
             labels.append(f"<i>{label}</i>" if label and row["running"] else label)
             day = week_start + pd.Timedelta(int(row["day"]), "D")
-            span = (f"{(day + pd.Timedelta(minutes=row['start_min'])).strftime('%H:%M')}"
-                    f"–{(day + pd.Timedelta(minutes=row['end_min'])).strftime('%H:%M')}")
+            span = (f"{(day + pd.Timedelta(row['start_min'], "m")).strftime('%H:%M')}"
+                    f"–{(day + pd.Timedelta(row['end_min'], "m")).strftime('%H:%M')}")
             filed = " · ".join(v for v in (str(row.get("project") or "").strip(),
                                            str(row.get("category") or "").strip(),
                                            str(row.get("major_task") or "").strip()) if v)
@@ -3082,15 +3105,19 @@ def fig_week_calendar(segments, week_start, color_by="category", colors=None,
                 + ("<br><i>still running</i>" if row["running"] else "")
             )
 
+        keys = [("tracked", str(row["id"])) for _, row in sub.iterrows()]
+        line_colors, line_widths = _selection_outline(keys, selected, TL_SURFACE, 1.5)
         fig.add_trace(go.Bar(
             x=sub["day"], base=sub["start_min"], y=sub["_draw_min"],
             offset=sub["_offset"], width=sub["_width"],
             name=group, legendgroup=group,
+            customdata=[list(k) for k in keys],
             # The surface-coloured hairline IS the 2px gap between touching blocks -- back-
             # to-back entries would otherwise read as one long block. A contrasting border
-            # would add ink that isn't data; this only subtracts.
+            # would add ink that isn't data; this only subtracts. The clicked block swaps
+            # that hairline for a ring, which is the one case it carries meaning.
             marker=dict(color=fill, cornerradius=3,
-                        line=dict(color=TL_SURFACE, width=1.5)),
+                        line=dict(color=line_colors, width=line_widths)),
             text=labels, textposition="inside", insidetextanchor="start",
             insidetextfont=dict(size=10, color=ink),
             hovertext=hovers, hoverinfo="text",
@@ -3168,3 +3195,35 @@ def fig_week_calendar(segments, week_start, color_by="category", colors=None,
                     font=dict(size=12), title=dict(text="")),
     )
     return fig
+
+
+def calendar_selection(event):
+    """The ("tracked", id) / ("planned", index) pair behind a click on fig_week_calendar, or
+    None when nothing is selected.
+
+    Streamlit hands plotly selections back as either an attribute object or a plain dict
+    depending on how the chart was rendered, and a point carries `customdata` only when the
+    trace set it -- which every trace here does. Anything unexpected is read as "no
+    selection" rather than guessed at: a mis-mapped click would open the editor on the wrong
+    entry, and the user would then save over it."""
+    if not event:
+        return None
+    selection = getattr(event, "selection", None)
+    if selection is None and isinstance(event, dict):
+        selection = event.get("selection")
+    points = getattr(selection, "points", None)
+    if points is None and isinstance(selection, dict):
+        points = selection.get("points")
+    if not points:
+        return None
+    first = points[0]
+    data = first.get("customdata") if isinstance(first, dict) else getattr(first, "customdata", None)
+    if not data or len(data) < 2:
+        return None
+    kind = str(data[0])
+    if kind == "planned":
+        try:
+            return ("planned", int(data[1]))
+        except (TypeError, ValueError):
+            return None
+    return ("tracked", str(data[1])) if kind == "tracked" else None

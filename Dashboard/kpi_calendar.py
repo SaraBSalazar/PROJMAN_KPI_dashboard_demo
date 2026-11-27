@@ -1,4 +1,4 @@
-"""What your work calendar says you planned to be doing, read straight from Google.
+"""What your work calendar says she planned to be doing, read straight from Google.
 
 Google Calendar publishes each calendar at a private iCal URL (Settings -> the calendar ->
 "Secret address in iCal format"). Fetching that needs no OAuth, no Google Cloud project and
@@ -8,7 +8,7 @@ change it.
 
 The URL is a credential. Anyone holding it can read that calendar, so it is kept in
 %LOCALAPPDATA% alongside the activity watcher's state -- never in Data/, never in the repo,
-and never in the project folder.
+and never in the OneDrive-synced tree.
 
 ICS is parsed here rather than with a library, because the subset Google emits is small and
 the two genuinely hard parts are already installed: dateutil.rrule (which pandas brings in)
@@ -174,7 +174,7 @@ def _unfold(text):
 def _split_property(line):
     """'DTSTART;TZID=Europe/Lisbon:20261123T100000' -> ('DTSTART', {'TZID': ...}, '2026...').
     The split is on the first colon OUTSIDE double quotes -- a quoted parameter value is
-    allowed to contain one (CN="Lee: Research" does happen), and splitting naively on the first
+    allowed to contain one (CN="Sara: ADA" does happen), and splitting naively on the first
     colon would cut the property in the wrong place."""
     in_quotes = False
     for i, char in enumerate(line):
@@ -395,10 +395,14 @@ def planned_blocks(events, week_start):
     """Calendar events cut into one drawable block per day, the same shape
     kpi_data.entry_segments produces for tracked time -- so the week grid can draw both
     against one pair of axes. Returns a list of dicts with day / start_min / end_min /
-    title / hours."""
+    title / hours / event_index.
+
+    `event_index` points back into `events`, because one event past midnight becomes two
+    blocks and clicking either of them has to offer the WHOLE meeting to track, not the
+    half that happens to be on the day that was clicked."""
     week_start = datetime.combine(_as_date(week_start), time.min)
     blocks = []
-    for event in events:
+    for index, event in enumerate(events):
         start, end = event["from"], max(event["to"], event["from"])
         day = datetime.combine(start.date(), time.min)
         while day < end and day < week_start + timedelta(7):
@@ -407,6 +411,7 @@ def planned_blocks(events, week_start):
             if hi > lo:
                 blocks.append({
                     "day": (day - week_start).days, "title": event["title"],
+                    "event_index": index,
                     "start_min": (lo - day).total_seconds() / 60,
                     "end_min": (hi - day).total_seconds() / 60,
                     "hours": (hi - lo).total_seconds() / 3600,

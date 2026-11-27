@@ -182,7 +182,10 @@ together instead of being scattered through one flat list.
   or project, overlapping stretches side by side, anything past midnight drawn in both days
   — and a **breakdown** — hours per day for every project, split by major task (or any other
   pair of fields), ordered by total. Entries are editable as a table, and one can be added
-  by hand for a stretch you forgot.
+  by hand for a stretch you forgot — or **click any block on the calendar** to open it:
+  its date, start, end and tags, with ±15-minute nudges on each end, plus delete and
+  "start a new timer like this". Clicking a grey calendar block offers to track that
+  meeting instead; the dashboard never edits a calendar.
 
   `Data/time_entries.csv` is *not* the time log: it is the other half of it. `track_time.csv`
   is one row per project/category/major task **per week**, which is the right shape to report
