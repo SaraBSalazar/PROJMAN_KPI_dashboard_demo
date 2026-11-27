@@ -3,7 +3,7 @@
 ## 1. Just for you
 
 ```
-cd "KPI_dashboard_demo\Dashboard"
+cd "PROJMAN_KPI_dashboard_demo\Dashboard"
 streamlit run KPI_Report.py
 ```
 
@@ -47,8 +47,8 @@ folder that's already set up — that's what proves the repo is actually self-co
 
 ```powershell
 cd $env:TEMP
-git clone https://github.com/SaraBSalazar/KPI_dashboard_demo.git
-cd KPI_dashboard_demo
+git clone https://github.com/SaraBSalazar/PROJMAN_KPI_dashboard_demo.git
+cd PROJMAN_KPI_dashboard_demo
 pip install -r Dashboard\requirements.txt
 cd Dashboard
 streamlit run KPI_Report.py
@@ -70,8 +70,8 @@ or delete it and clone again (simplest for a disposable test copy):
 
 ```powershell
 cd $env:TEMP
-Remove-Item -Recurse -Force KPI_dashboard_demo
-git clone https://github.com/SaraBSalazar/KPI_dashboard_demo.git
+Remove-Item -Recurse -Force PROJMAN_KPI_dashboard_demo
+git clone https://github.com/SaraBSalazar/PROJMAN_KPI_dashboard_demo.git
 ```
 
 **Fast check:** `python test_dashboard.py` (from the `Dashboard` folder) loads every page's
@@ -225,7 +225,7 @@ The live dashboard needs `streamlit run` going on your machine — but you can e
 **static, read-only snapshot** that works anywhere, anytime, with nothing running:
 
 ```
-cd KPI_dashboard_demo\Dashboard
+cd PROJMAN_KPI_dashboard_demo\Dashboard
 python export_snapshot.py
 ```
 

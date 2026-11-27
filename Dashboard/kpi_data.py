@@ -55,8 +55,8 @@ TL_PALETTE = ["#1f5c99", "#c1622e", "#1a8f6b", "#b8860b", "#b5577a", "#3a7d2c", 
 TL_PALETTE_DARK = ["#4a84c9", "#c76a35", "#29ab82", "#a87910", "#b2567d", "#5c9c4a", "#7a68b3", "#c75555"]
 
 # Gains & Outputs page: a named maturity/status palette for the 3 ordered states (Potential ->
-# In use -> Delivered) -- Delivered green, In use blue, Potential a muted neutral grey, per
-# Sara's explicit choice (she first asked for yellow on Potential, then corrected to grey).
+# In use -> Delivered) -- Delivered green, In use blue, Potential a muted neutral grey, a
+# deliberate choice (yellow on Potential was tried first and rejected).
 # Deliberately NOT TL_GOOD/TL_CRITICAL-style saturated traffic-light hues (TL_GOOD "#0ca30c"
 # was rejected as unprofessional) -- these are the same muted, desaturated family as TL_PALETTE
 # (OKLCH L/C checked against it) and TL_BASELINE (Potential's grey is a slightly darker step of
@@ -82,7 +82,7 @@ GAIN_STATE_COLORS_DARK = {"Delivered": "#29ab82", "In use": "#4a84c9", "Potentia
 #
 # Checked ONLY against GAIN_STATE_COLORS[_DARK] (Delivered/In use/Potential) -- NOT against
 # ADA_PERSONAL_COLOR[_DARK): ADA/Personal's orange only ever appears in fig_audience_outputs,
-# group colours only ever appear in fig_gains_active_potential/fig_gains_matrix, and those are
+# group colours only ever appear in fig_gains_matrix/fig_audience_outputs, and those are
 # three different figures -- no render ever puts the two palettes in the same picture, so
 # constraining against ADA's orange too was over-constraining the search for no real payoff
 # (an earlier pass did include it and it meaningfully shrank the usable hue space, forcing two
@@ -114,9 +114,8 @@ GAIN_GROUP_COLORS_DARK = {
 # (GAIN_STATE_COLORS keys, STATE_ORDER, developments["state"]/gain_summary comparisons) stays
 # the plain "In use" string everywhere in the data/logic layer; only the RENDERED text changes,
 # so nothing has to migrate and nothing is left half-comparing against an old string. "In use"
-# alone reads as "finished and running," which hides exactly what Sara asked to make explicit:
-# this state also covers something still being actively built/iterated on (her own example was
-# Pipeline). Kept short on purpose -- it still has to fit a legend entry and an axis tick label
+# alone reads as "finished and running," which hides exactly what this label makes explicit:
+# the state also covers something still being actively built/iterated on. Kept short on purpose -- it still has to fit a legend entry and an axis tick label
 # without wrapping or overflowing (checked by rendering, not just by eye).
 GAIN_STATE_LABELS = {"Delivered": "Delivered", "In use": "In use & developing", "Potential": "Potential"}
 
@@ -255,12 +254,18 @@ def build_category_palette(df, category_col="Category", value_col="Hours (exact)
     return order, colors
 
 
+# Every pd.Timedelta in this codebase is written positionally with an explicit unit --
+# pd.Timedelta(6, "D"), never pd.Timedelta(days=6). The keyword form builds a NumPy timedelta
+# with the "generic" unit, which NumPy deprecated and says it will eventually raise on; under
+# pandas 2.3 / NumPy 2.5 it already emits a DeprecationWarning on every call, and these run on
+# every page load. The two forms are exactly equivalent today, so this is purely about not
+# shipping a dashboard that stops loading on a future NumPy. Please don't "tidy" it back.
 def week_bounds(month_name, year, ordinal):
     """Monday/Sunday bounds of the `ordinal`-th Monday-start week overlapping `month_name year`."""
     month_start = pd.Timestamp(year=int(year), month=MONTH_ORDER.index(month_name) + 1, day=1)
     mondays = pd.date_range(month_start, month_start + pd.offsets.MonthEnd(0), freq="W-MON")
     start = mondays[int(ordinal) - 1]
-    return start, start + pd.Timedelta(days=6)
+    return start, start + pd.Timedelta(6, "D")
 
 
 def format_week_label(start, end):
@@ -709,18 +714,18 @@ def selectable_weeks(df, period, today, lookahead=2):
     logged for them. Past/closed periods just get their existing weeks (today won't fall
     inside them, so the lookahead loop below is a no-op there)."""
     starts = {s for s, _ in weeks_in_period(df, period)}
-    this_monday = today - pd.Timedelta(days=today.dayofweek)
+    this_monday = today - pd.Timedelta(today.dayofweek, "D")
     for i in range(lookahead + 1):
-        candidate = this_monday + pd.Timedelta(days=7 * i)
+        candidate = this_monday + pd.Timedelta(7 * i, "D")
         if period["start"] <= candidate < period["end"]:
             starts.add(candidate)
     ordered = sorted(starts)
-    return [(s, format_week_label(s, s + pd.Timedelta(days=6))) for s in ordered]
+    return [(s, format_week_label(s, s + pd.Timedelta(6, "D"))) for s in ordered]
 
 
 def default_week(weeks, today):
     """Current week if it's in `weeks`, else the most recent one on/before today, else the latest available."""
-    this_monday = today - pd.Timedelta(days=today.dayofweek)
+    this_monday = today - pd.Timedelta(today.dayofweek, "D")
     starts = [w[0] for w in weeks]
     if this_monday in starts:
         return this_monday
@@ -862,13 +867,6 @@ def task_dates_inconsistent(task):
     """True when both dates are set and the task is planned to finish before it starts."""
     start, due = task_span(task)
     return bool(start and due and start > due)
-
-
-def project_start(tasks):
-    """Earliest planned date across a project's tasks -- a task's start if it has one, else
-    its finish date. None when nothing is dated."""
-    dates = [d for t in tasks if (d := (task_start_date(t) or task_due_date(t)))]
-    return min(dates) if dates else None
 
 
 def task_schedule(all_tasks, today=None, within_days=None):
@@ -1222,7 +1220,7 @@ NAME_ALIASES = {
     # preferred for active/potential (see _decide_active), but tools.xlsx's spelling still
     # needs the alias so it isn't flagged as an unmatched tool.
     "metabolomics facility dashboard": "metabolomics facility pipeline dashboard",
-    # Sara is renaming "Pipeline" to "OMICs Pipelines" across the dashboard-owned files
+    # "Pipeline" is being renamed to "OMICs Pipelines" across the dashboard-owned files
     # (Special_Projects_Ratings.xlsx, special_project_tasks.json); the gains workbook's own
     # Overview sheet (SP01's Project cell) is read-only from here and gets updated by hand
     # instead (see HOW_TO_RUN.md). Until -- and in case she ever only renames it in one
@@ -1582,12 +1580,15 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
         GAIN_FALLBACK_GROUP) -- what the charts use to band/colour columns, instead of
         consulting the static GAIN_GROUPS dict directly.
       - "ungrouped_gains": gain column names present on the sheet but NOT in GAIN_GROUPS --
-        i.e. silently mapped to GAIN_FALLBACK_GROUP above rather than a group Sara actually
+        i.e. silently mapped to GAIN_FALLBACK_GROUP above rather than a group actually
         picked for them. Surfaced in the page's Data health section so a newly-added column
         with an unrecognized name doesn't quietly land in the wrong theme unnoticed.
       - "reuse": the Reuse sheet, come_from/serves columns as real lists, came_from_n /
-        serves_n as nullable ints (came_from_n counts ONLY ids matching _USER_PROJECT_ID_RE --
-        see came_from_projects below), constant_use bool, led_to, joined to active/state.
+        serves_n as nullable ints (came_from_n counts ONLY ids matching
+        _USER_PROJECT_ID_RE -- see
+        came_from_projects below), constant_use bool, led_to, came_from_relations
+        (parent label -> "evolved"/"output", see split_lineage_relation), joined to
+        active/state.
         came_from_ids / serves_ids keep their old meaning (the raw token lists); on top of
         those: came_from_projects (_USER_PROJECT_ID_RE matches only), came_from_developments (this
         workbook's own ids, or a bare name, for anything in "Came from" that is NOT a user
@@ -1600,175 +1601,6 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
         counts as matched).
       - "unmatched_projects": same idea for goals_df project names.
       - "unmatched_reuse_ids": project-tag ids used in the Reuse sheet's "Came from" or
-        "User projects served" columns that match no project in `project_lookup` across any
-        period -- a typo catcher (only populated when `project_lookup` is given; empty, not
-        wrongly "all unmatched", when it's None).
-      - "lineage_parent_status": for a lineage parent with no row in this workbook, its live
-        tools.xlsx status (today only ever "Deprecated"), keyed by normalized name. Lets the
-        lineage chart say why such a node has no Delivered/In use/Potential state of its own.
-      - "led_to_by_name": the full lineage reverse-index, keyed by EVERY parent identity seen
-        in any "Came from" cell (a workbook ID like "SP01", or a normalized free-text name) --
-        not just ones with their own Overview row, so a tool like "motif-scan-from-github"
-        that isn't catalogued here at all can still be looked up (`led_to_by_name[norm_name]`)
-        without KeyError. "developments"/"reuse"["led_to"] is this same dict filtered down to
-        workbook rows and resolved to display names, for the page to render directly.
-    May raise FileNotFoundError / PermissionError -- callers show a friendly message, same
-    as load_tools().
-    """
-    if not GAINS_PATH.exists():
-        return _seed_gains_workbook()
-    sheets = pd.read_excel(GAINS_PATH, sheet_name=None)
-    for df in sheets.values():
-        df.columns = [str(c).strip() for c in df.columns]
-    return sheets
-
-
-def save_gains_sheets(sheets):
-    """Write the gains store back, re-syncing the name columns first.
-
-    Overview owns each development's name; the Gains/Reuse/Value sheets each carry a copy for
-    readability (the seed workbook had them as `=Overview!D5` formulas, which is exactly the
-    same thing done with less ceremony). Rewriting them from Overview on every save is what
-    stops a rename in one place leaving three sheets labelled with the old name."""
-    sheets = {name: df.copy() for name, df in sheets.items()}
-    overview = sheets.get("Overview")
-    if overview is not None:
-        name_by_id = dict(zip(overview["ID"], overview["Project"]))
-        for sheet_name, col in (("Gains", "Project"), ("Reuse", "Development / tool"),
-                                 ("Value", "Project")):
-            df = sheets.get(sheet_name)
-            if df is not None and len(df):
-                df[col] = [name_by_id.get(i, n) for i, n in zip(df["ID"], df.get(col, df["ID"]))]
-    _write_gains_sheets(sheets)
-
-
-def next_development_id(overview, category):
-    """The next free SP../T.. id for a new development, numbered within its own series so the
-    ids stay meaningful (SP = Special Project, T = Tool). Counts from the highest existing
-    number rather than the row count, so deleting a row never hands the next one a duplicate."""
-    prefix = "SP" if category == "Special Project" else "T"
-    used = [
-        int(m.group(1))
-        for m in (re.match(rf"^{prefix}(\d+)$", str(i).strip(), re.IGNORECASE)
-                  for i in overview["ID"])
-        if m
-    ]
-    return f"{prefix}{max(used, default=0) + 1:02d}"
-
-
-def _decide_state(category, project_name, status, goals_by_name, tools_by_name,
-                   served_ids, is_parent):
-    """The core Delivered / In use / Potential call for one development -- a pure function of
-    plain values (no DataFrame access), so every branch is directly unit-testable.
-
-    Delivered only ever comes from a Special Project's own Completed date
-    (`goals_by_name[name]` is `_finished`), or, as a fallback with no live match at all, the
-    workbook's own Status column reading "Completed" -- there's no "delivered because XYZ"
-    shortcut the way there is for In use.
-
-    In use is Delivered's weaker sibling -- demonstrably being used, but not (yet) finished
-    and banked -- and ANY of these is enough on its own, independent of how the base status
-    below was decided:
-      1. `served_ids` is non-empty (it serves at least one real user project), or
-      2. `is_parent` is True (some OTHER development names this one as where it came from --
-         itself proof of use, with no served project required), or
-      3. it's matched as a Tool whose live Status isn't Deprecated.
-    Live dashboard data wins the BASE status when it's available and matches by name; the
-    Excel's own Status column is only a fallback for the base -- the workbook's Notes sheet
-    says those statuses were filled in as a blanket guess ("Tools = In use, Special Projects
-    = In development"), not verified per row. Criteria 1/2 above can still elevate that
-    fallback-decided base from Potential to In use.
-
-    Returns (state, match_source) -- match_source ("ratings"/"tools"/"status") names which
-    live table decided the BASE status, same meaning as before the 3-state split."""
-    variants = _name_variants(project_name)
-    delivered = False
-    in_use = False
-    match_source = "status"
-
-    if category == "Special Project" and goals_by_name is not None:
-        for v in variants:
-            if v in goals_by_name:
-                delivered = bool(goals_by_name[v])
-                match_source = "ratings"
-                break
-
-    if match_source == "status" and category == "Tools" and tools_by_name is not None:
-        for v in variants:
-            if v in tools_by_name:
-                in_use = tools_by_name[v] != "deprecated"
-                match_source = "tools"
-                break
-
-    if match_source == "status":
-        norm_status = _norm_name(status)
-        if norm_status in _FALLBACK_DELIVERED_STATUSES:
-            delivered = True
-        elif norm_status in _FALLBACK_IN_USE_STATUSES:
-            in_use = True
-
-    if delivered:
-        return "Delivered", match_source
-    if in_use or bool(served_ids) or is_parent:
-        return "In use", match_source
-    return "Potential", match_source
-
-
-def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
-    """Read SpecialProjects_Tools_expected_gains_v5.xlsx -- the catalogue of Special
-    Projects' and Tools' expected (or already-delivered) gains -- and fold it together with
-    whatever's live on the dashboard. Optional `goals_df` (load_goals()) and `tools_df`
-    (load_tools()) let a Special Project / Tool's real status override the Excel's own
-    Status column for the Delivered/In use/Potential call (see _decide_state); pass neither
-    to fall back to the Excel alone, e.g. from a context that hasn't loaded them. Optional
-    `project_lookup` (build_project_lookup()'s result) joins the Reuse sheet's DNA_###/STAT_###
-    ids to the real project tracker, across every reporting period -- see "unmatched_reuse_ids"
-    below for what happens when an id has no match.
-
-    Returns a dict:
-      - "developments": one row per Overview row, all its columns cleaned (the 5 x/blank
-        flag columns parsed to bool), plus "active" (bool, state != "Potential"), "state"
-        ("Delivered"/"In use"/"Potential"), "match_source" ("ratings"/"tools"/"status" --
-        which rule decided the BASE status, see _decide_state), "led_to" (readable names of
-        other developments naming this one as a parent), and "constant_use" (bool, from Use
-        pattern).
-      - "gains_long": tidy, one row per (development, gain) marked "x" -- ID, Project,
-        Category, Gain, Group, active, state.
-      - "gain_summary": one row per gain ACTUALLY present on the Gains sheet (even ones with
-        zero rows) -- Gain, Group, n_delivered, n_in_use, n_potential, n_active (= delivered +
-        in use), n_total, active_projects, potential_projects, delivered_projects,
-        in_use_projects (name lists, for chart hover), sorted by n_total descending. The gain
-        set is read fresh from the sheet every load (see "gain_columns" below), not a fixed
-        list of 10 -- works whether the sheet has 9, 10, 11 or 12 gain columns.
-      - "gain_columns": the gain column headers actually found between "Project" and "Gain
-        types (n)" on the Gains sheet, in sheet order -- what gain_summary/gains_long iterate
-        over, and what the charts need to size/order themselves instead of assuming GAIN_GROUPS'
-        historical 10.
-      - "gain_groups": {gain column name: group name} for exactly the columns in
-        "gain_columns" (GAIN_GROUPS' mapping where the name is recognized, else
-        GAIN_FALLBACK_GROUP) -- what the charts use to band/colour columns, instead of
-        consulting the static GAIN_GROUPS dict directly.
-      - "ungrouped_gains": gain column names present on the sheet but NOT in GAIN_GROUPS --
-        i.e. silently mapped to GAIN_FALLBACK_GROUP above rather than a group Sara actually
-        picked for them. Surfaced in the page's Data health section so a newly-added column
-        with an unrecognized name doesn't quietly land in the wrong theme unnoticed.
-      - "reuse": the Reuse sheet, come_from/serves columns as real lists, came_from_n /
-        serves_n as nullable ints (came_from_n counts ONLY the DNA_*/STAT_* ids -- see
-        came_from_projects below), constant_use bool, led_to, came_from_relations
-        (parent label -> "evolved"/"output", see split_lineage_relation), joined to
-        active/state.
-        came_from_ids / serves_ids keep their old meaning (the raw token lists); on top of
-        those: came_from_projects (DNA_*/STAT_* ids only), came_from_developments (this
-        workbook's own ids, or a bare name, for anything in "Came from" that is NOT a user
-        project -- lineage, not reuse).
-      - "value": the Value sheet, unit_price numeric-or-None, joined to active/state.
-      - "notes": the Notes sheet's free-text lines as a list of strings (title row dropped).
-      - "unmatched_tools": non-deprecated tools_df names with no row in this workbook at all
-        (by name, alias included) -- a data-health check, not restricted to rows categorized
-        "Tools" (e.g. a tool that's actually catalogued here as a Special Project still
-        counts as matched).
-      - "unmatched_projects": same idea for goals_df project names.
-      - "unmatched_reuse_ids": DNA_###/STAT_### ids used in the Reuse sheet's "Came from" or
         "User projects served" columns that match no project in `project_lookup` across any
         period -- a typo catcher (only populated when `project_lookup` is given; empty, not
         wrongly "all unmatched", when it's None).
@@ -2183,10 +2015,6 @@ def save_publications(all_pubs):
     return None
 
 
-def new_publication():
-    return {"title": "", "venue": "", "date": "", "url": "", "projects": ""}
-
-
 # --- CV: the career record the service sits inside ------------------------------------------
 # cv_data.json is the source of truth and cv_data.xlsx its Excel mirror -- the same split the
 # beyond-projects cards and publications already use: the dashboard writes the JSON, then
@@ -2359,11 +2187,6 @@ CV_OUTPUT_SECTION = {
 }
 
 CV_OUTPUT_FIELDS = ["kind", "title", "where", "date", "detail", "scale", "projects", "url"]
-
-
-def new_cv_output(kind="Course attended"):
-    return {"kind": kind, "title": "", "where": "", "date": "", "detail": "", "scale": "",
-            "projects": "", "url": ""}
 
 
 def load_cv_outputs():
@@ -2713,11 +2536,15 @@ def cv_html_with_live_metrics(metrics, src=None):
     html = src.read_text(encoding="utf-8")
     totals = metrics["totals"]
     as_of = totals.get("as_of")
+    # These keys are a contract with the CV page itself: each one has to match a
+    # `data-metric="..."` attribute in Data/CV_dashboard.html, or that number simply never
+    # gets filled in (silently -- the page stays valid either way). Rename one here and you
+    # must rename it there in the same commit.
     live = {
-        "gimm_deliverables_total": totals["delivered"],
-        "gimm_projects_total": totals["projects_total"],
-        "gimm_tools_total": totals["tools"],
-        "gimm_updated": pd.Timestamp(as_of).strftime("%d %b %Y") if as_of is not None else "",
+        "org_deliverables_total": totals["delivered"],
+        "org_projects_total": totals["projects_total"],
+        "org_tools_total": totals["tools"],
+        "org_updated": pd.Timestamp(as_of).strftime("%d %b %Y") if as_of is not None else "",
     }
     block = json.dumps(live, ensure_ascii=False)
     updated, n = re.subn(
@@ -3059,10 +2886,10 @@ def project_activity(df_period):
         for prev, nxt in zip(weeks, weeks[1:]):
             missing = int((nxt - prev).days // 7) - 1
             if missing >= PAUSE_MIN_WEEKS:
-                gaps.append({"start": prev + pd.Timedelta(days=7),
-                             "end": nxt - pd.Timedelta(days=1), "weeks": missing})
+                gaps.append({"start": prev + pd.Timedelta(7, "D"),
+                             "end": nxt - pd.Timedelta(1, "D"), "weeks": missing})
         activity[str(project)] = {
-            "first": weeks[0], "last_end": weeks[-1] + pd.Timedelta(days=6),
+            "first": weeks[0], "last_end": weeks[-1] + pd.Timedelta(6, "D"),
             "n_active": len(weeks), "gaps": gaps,
         }
     return activity
@@ -3208,7 +3035,7 @@ def lead_time_table(projects, df_period=None, period_end=None, pause_notes=None)
         if act:
             trailing_weeks = int((work_end - act["last_end"]).days // 7)
             if trailing_weeks >= PAUSE_MIN_WEEKS:
-                gaps.append({"start": act["last_end"] + pd.Timedelta(days=1),
+                gaps.append({"start": act["last_end"] + pd.Timedelta(1, "D"),
                              "end": work_end, "weeks": trailing_weeks})
 
         # A multi-week pause is forgiven week by week, not as a single all-or-nothing block
@@ -3298,8 +3125,8 @@ def gap_weeks(gap):
     returns a single week identical to the gap itself, so nothing changes for it."""
     weeks = []
     for i in range(gap["weeks"]):
-        week_start = gap["start"] + pd.Timedelta(days=7 * i)
-        week_end = min(week_start + pd.Timedelta(days=6), gap["end"])
+        week_start = gap["start"] + pd.Timedelta(7 * i, "D")
+        week_end = min(week_start + pd.Timedelta(6, "D"), gap["end"])
         weeks.append({"start": week_start, "end": week_end})
     return weeks
 

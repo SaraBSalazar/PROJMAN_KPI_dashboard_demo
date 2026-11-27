@@ -132,7 +132,7 @@ NEW_PROJECT_KEYS = [
 
 with st.form("new_project_form"):
     c1, c2 = st.columns(2)
-    project_tag = c1.text_input("Project tag *", help="e.g. DNA_033", key="new_project_tag")
+    project_tag = c1.text_input("Project tag *", help="e.g. GEN_014", key="new_project_tag")
     short_description = c2.text_input("Short description", key="new_project_desc")
 
     c3, c4, c4b = st.columns(3)

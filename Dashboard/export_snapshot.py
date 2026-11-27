@@ -383,7 +383,7 @@ def period_panels(pkey, period, df, raw_df, category_order, cat_colors, task_cat
     # The reporting year runs Oct->Oct, so every count on this page is "this window", not a
     # calendar year -- spelled out here and again on the Turnaround tiles.
     window = (f'{period["start"].strftime("%d %b %Y")} → '
-              f'{(period["end"] - pd.Timedelta(days=1)).strftime("%d %b %Y")}')
+              f'{(period["end"] - pd.Timedelta(1, "D")).strftime("%d %b %Y")}')
     out.append(panel("overview", (
         f'<h2>Year at a glance — {esc(period["label"])}</h2>'
         + note(f'The whole reporting year, <strong>{esc(window)}</strong>. Use the tabs above '
@@ -403,7 +403,7 @@ def period_panels(pkey, period, df, raw_df, category_order, cat_colors, task_cat
     if not week_starts:
         out.append(panel("week", "<h2>Week</h2>" + empty_note, period=pkey))
     else:
-        week_pairs = [(start, kd.format_week_label(start, start + pd.Timedelta(days=6)))
+        week_pairs = [(start, kd.format_week_label(start, start + pd.Timedelta(6, "D")))
                       for start in week_starts]
         default_start = kd.default_week(week_pairs, today)
         labels = {start: label for start, label in week_pairs}

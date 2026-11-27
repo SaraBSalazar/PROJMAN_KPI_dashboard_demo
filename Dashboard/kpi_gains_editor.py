@@ -70,7 +70,7 @@ def _split_tokens(cell):
 
 def _project_options(project_lookup):
     """{display label: project id} for every project tag the tracker knows, across all
-    reporting periods. The label carries the real title so picking DNA_031 out of a list of
+    reporting periods. The label carries the real title so picking GEN_014 out of a list of
     forty ids is possible; the id is what gets written."""
     options = {}
     for pid in sorted(project_lookup or {}):

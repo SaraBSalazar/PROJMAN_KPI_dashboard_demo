@@ -35,7 +35,7 @@ ks.header("Publications & Courses",
 
 periods = kcache.discover_periods()
 if not periods:
-    st.error("No reporting-period sheets found in any Sara_KPI*.xlsx file in ../Data.")
+    st.error("No reporting-period sheets found in any KPI*.xlsx file in ../Data.")
     st.stop()
 
 period_labels = [p["label"] for p in periods]
@@ -145,7 +145,7 @@ if not READONLY:
                 "date": st.column_config.TextColumn("Date", help="YYYY-MM-DD or YYYY-MM"),
                 "url": st.column_config.LinkColumn("Link (DOI or URL)"),
                 "projects": st.column_config.TextColumn(
-                    "Related projects", help="Tracker tags, comma-separated, e.g. STAT_036, STAT_057"),
+                    "Related projects", help="Tracker tags, comma-separated, e.g. GEN_014, PROT_005"),
             },
         )
         if st.button("💾 Save publications", key=f"pub_save_{period_label}"):

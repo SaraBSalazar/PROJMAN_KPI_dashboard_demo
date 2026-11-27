@@ -104,9 +104,9 @@ with tab_week:
         )
         selected_label = week_labels[selected_start]
         week_df = df[df["_week_sort"] == selected_start]
-        previous_start = selected_start - pd.Timedelta(days=7)
+        previous_start = selected_start - pd.Timedelta(7, "D")
         previous_df = df[df["_week_sort"] == previous_start]
-        previous_label = kd.format_week_label(previous_start, previous_start + pd.Timedelta(days=6))
+        previous_label = kd.format_week_label(previous_start, previous_start + pd.Timedelta(6, "D"))
 
         page_nav([
             ("Hours this week", "week-hours"), ("By project & task", "week-by-task"),

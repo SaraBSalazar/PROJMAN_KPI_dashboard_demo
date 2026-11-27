@@ -1128,7 +1128,6 @@ def build_empty(year=None):
 
 
 if __name__ == "__main__":
-    import sys
     if "--empty" in sys.argv:
         build_empty()
     else:

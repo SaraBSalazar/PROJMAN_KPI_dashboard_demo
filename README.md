@@ -1,6 +1,6 @@
 # KPI dashboard (demo)
 
-[![Smoke test](https://github.com/SaraBSalazar/KPI_dashboard_demo/actions/workflows/test.yml/badge.svg)](https://github.com/SaraBSalazar/KPI_dashboard_demo/actions/workflows/test.yml)
+[![Smoke test](https://github.com/SaraBSalazar/PROJMAN_KPI_dashboard_demo/actions/workflows/test.yml/badge.svg)](https://github.com/SaraBSalazar/PROJMAN_KPI_dashboard_demo/actions/workflows/test.yml)
 
 A Streamlit dashboard for tracking the work of a small analysis/consulting team: a
 personal time log, a project tracker with turnaround metrics, a goals/ratings view for
@@ -149,12 +149,18 @@ together instead of being scattered through one flat list.
   of it is landing already. Each one is **Delivered**, **In use & developing**, or
   **Potential** — and that is read off the live data rather than taken on trust, so marking
   a special project finished (or a tool deprecated) moves its gains here by itself. Holds
-  the gains split by state and banded by theme, a developments × gains matrix, audience and
-  outputs, a value-potential table of researched market-equivalent prices, reuse drawn in both
+  a developments × gains matrix with totals on both margins, audience and outputs, a
+  value-potential table of researched market-equivalent prices, reuse drawn in both
   directions (what a development was built out of, and what benefits from it), and a lineage
   tree of which developments grew out of which. A lineage edge also says *how* the child came
   about: **evolved into** (the parent became it and is usually retired) or **output of** (the
-  parent produced it and carries on), drawn as two different arrows. Read-only.
+  parent produced it and carries on), drawn as two different arrows. The audience and reuse
+  charts each say underneath how much of the development set they actually speak for — both
+  draw a subset, since a development with no audience flag, or no reuse in either direction,
+  is drawn as nothing rather than as an empty row. The charts are read-only, but what they
+  draw is editable: tick a development's gains in a grid here, edit the value table here, and
+  record what fed a development on its own Special Project / Tool card. The Delivered / In
+  use / Potential call is never editable anywhere; it is derived.
 
 **Profile**
 

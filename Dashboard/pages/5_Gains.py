@@ -7,7 +7,6 @@ Projects and Tools cards, not here) all write back to gains.xlsx through kpi_gai
 The 3-state rule is never editable anywhere -- it is derived, in kpi_data.py (kd._decide_state).
 """
 
-import pandas as pd
 import streamlit as st
 
 import kpi_cache as kcache
@@ -25,9 +24,10 @@ ks.inject(dark=st.context.theme.type == "dark")
 # independently so Delivered stays the most prominent against a dark surface too.
 STATE_COLORS = kd.GAIN_STATE_COLORS_DARK if st.context.theme.type == "dark" else kd.GAIN_STATE_COLORS
 # The 4 gain-theme group colours (axis bands/labels only, never the data marks -- only ever
-# drawn in fig_gains_active_potential/fig_gains_matrix) -- re-picked per-theme now that the
-# state palette above needed its own dark variant (see kd.GAIN_GROUP_COLORS' docstring for the
-# full story, including why ADA's orange is deliberately NOT part of this constraint set).
+# drawn in fig_gains_matrix, since fig_gains_active_potential was folded into it) -- re-picked
+# per-theme now that the state palette above needed its own dark variant (see
+# kd.GAIN_GROUP_COLORS' docstring for the full story, including why ADA's orange is
+# deliberately NOT part of this constraint set).
 GROUP_COLORS = kd.GAIN_GROUP_COLORS_DARK if st.context.theme.type == "dark" else kd.GAIN_GROUP_COLORS
 # The ADA/Personal audience row's own identity colour -- orange, used ONLY in
 # fig_audience_outputs (never alongside the group colours above, which live in two different
@@ -211,22 +211,26 @@ def _audience_coverage_caption(developments):
     return " ".join(parts)
 
 
-def _reuse_coverage_caption(reuse, n_developments):
+def _reuse_coverage_caption(reuse, developments):
     """Same idea for the reuse butterfly: how many of the developments in "What delivers what"
     the chart draws at all, split by which side they land on. Rows with nothing on either side
     are dropped by fig_reuse_both_directions (by design -- an all-zero row is noise), so
     without this the chart silently speaks for a subset and looks like it speaks for all."""
+    n_developments = len(developments)
     left_n = reuse["came_from_projects"].map(len)
     right_n = reuse["serves_project_ids"].map(len)
     n_built = int((left_n > 0).sum())
     n_benefits = int((right_n > 0).sum())
     n_both = int(((left_n > 0) & (right_n > 0)).sum())
-    n_drawn = int(((left_n + right_n) > 0).sum())
-    # Anything with no reuse row at all counts as "nothing recorded" just as much as a row of
-    # two empty cells does, so the remainder is taken against the development count, not the
-    # reuse sheet's own row count.
-    n_absent = n_developments - n_drawn
-    absent_constant = int((reuse["constant_use"] & ((left_n + right_n) == 0)).sum())
+    drawn_ids = set(reuse.loc[(left_n + right_n) > 0, "ID"])
+    n_drawn = len(drawn_ids)
+    # Counted off the DEVELOPMENTS, not off the Reuse sheet: a development with no Reuse row
+    # at all (hand-deleted in Excel -- the editors always write the three sheets together)
+    # has nothing recorded just as much as one with a row of two empty cells, and only
+    # Overview's own "Use pattern" column can still say whether it is constant-use.
+    absent = developments[~developments["ID"].isin(drawn_ids)]
+    n_absent = len(absent)
+    absent_constant = int(absent["constant_use"].sum())
 
     benefits_txt = (f"**{n_benefits}** with at least one project benefiting from them"
                     if n_benefits else "**none** yet with a project recorded as benefiting from it")
@@ -358,7 +362,7 @@ if not READONLY:
 # --- Reuse: built out of real user work, and who benefits from it --------------------------
 st.subheader("Reuse: built out of real user work, and who benefits", anchor="gains-reuse")
 st.plotly_chart(kc.fig_reuse_both_directions(reuse, STATE_COLORS, project_lookup), width="stretch")
-st.caption(_reuse_coverage_caption(reuse, n_dev))
+st.caption(_reuse_coverage_caption(reuse, developments))
 if not reuse["serves_project_ids"].map(len).sum():
     st.caption("The right-hand 'benefits' side is empty because nothing is listed yet under "
                "**User projects served** on the Reuse sheet -- it's not broken, there's just "

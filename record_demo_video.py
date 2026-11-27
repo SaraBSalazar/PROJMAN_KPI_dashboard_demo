@@ -629,7 +629,7 @@ def run_tour(page: Page) -> None:
 
     # ------------------------------------------------------------------ OUTRO --
     title_card(page, "Thanks for watching", "Fully synthetic data, real workflow.",
-               "github.com/SaraBSalazar/KPI_dashboard_demo", 3.5)
+               "github.com/SaraBSalazar/PROJMAN_KPI_dashboard_demo", 3.5)
 
 
 def main() -> None:

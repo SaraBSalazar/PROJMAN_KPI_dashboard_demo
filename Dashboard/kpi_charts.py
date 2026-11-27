@@ -632,7 +632,7 @@ def fig_hours_by_project(projects, df_period=None):
 
 
 def _project_bullets(projects, mask, empty_text="(none)"):
-    """'• DNA_031 — Short description' per matching row, one per line, for a hover list."""
+    """'• GEN_014 — Short description' per matching row, one per line, for a hover list."""
     sub = projects.loc[mask]
     if not len(sub):
         return empty_text
@@ -719,7 +719,8 @@ def fig_received_vs_finished(projects, period_months, period_start, truncate_at)
         # (a project delivered mid-month still counts as open for that month; it drops off
         # starting the month after -- not the month it closes in, which is what "one less
         # closed in Sep, one more in Oct" turned out to be pointing at: that one's a data
-        # typo (DNA_018), not this formula, but the formula itself needed this fix too).
+        # typo in one project's dates, not this formula, but the formula itself needed
+        # this fix too).
         open_mask = (
             in_workload
             & (workload_start <= month.end_time)
@@ -1062,7 +1063,7 @@ def fig_goals_at_a_glance(goals_df):
         if not r.get("_finished"):
             return ""
         when = r.get("_completed")
-        return f"<br><b>✓ Finished</b>" + (f" {when.strftime('%d %b %Y')}" if when else "")
+        return "<br><b>✓ Finished</b>" + (f" {when.strftime('%d %b %Y')}" if when else "")
 
     hover_text = goals_df.apply(
         lambda r: (
@@ -1401,7 +1402,7 @@ def fig_lead_time_stages(lead_df, title="Project turnaround", pause_notes=None, 
                     ))
                     legend_shown[forgiven] = True
                     for d in range(week_days):
-                        pause_hover["x"].append(w["start"] + pd.Timedelta(days=d, hours=12))
+                        pause_hover["x"].append(w["start"] + pd.Timedelta(d, "D") + pd.Timedelta(12, "h"))
                         pause_hover["y"].append(_wrap_label(r["Project tag"], 20))
                         pause_hover["text"].append(text)
 
@@ -1480,7 +1481,7 @@ def fig_lead_time_stages(lead_df, title="Project turnaround", pause_notes=None, 
     # Close the axis on the data rather than letting plotly autorange: it pads a few weeks
     # past the last bar, and for a closed reporting period (whose bars already stop at the
     # period end) that padding reads as calendar the review doesn't cover.
-    left_pad = pd.Timedelta(days=max(2, round(span * 0.02)))
+    left_pad = pd.Timedelta(max(2, round(span * 0.02)), "D")
     fig.update_xaxes(type="date", showgrid=True, gridcolor=TL_GRID, tickformat="%d %b",
                      range=[clean["first_contact"].min() - left_pad, right_edge])
     fig.update_yaxes(showgrid=False, tickfont=dict(size=12, color=TL_INK_SECONDARY))
@@ -2160,8 +2161,8 @@ def fig_audience_outputs(developments, state_colors, ada_color):
     collaboration, Publication potential, Market-equivalent value) PLUS one more row built
     from a different column -- "ADA / Personal", `Output level` in {Internal ADA, Internal
     Worker} -- the audience dimension those 5 flags never actually asked about: not "is there
-    an internal user" but "is this output for ADA/Sara herself rather than for anyone it would
-    call a 'user' at all." Same Delivered/In use/Potential split as every other chart on this
+    an internal user" but "is this output for ADA or personal/internal use rather than for
+    anyone it would call a 'user' at all." Same Delivered/In use/Potential split as every other chart on this
     page; `state_colors` is the page's theme-matched kd.GAIN_STATE_COLORS / _DARK dict.
 
     ADA / Personal is always pinned to the FIRST row, not sorted in by its count like the
@@ -2270,7 +2271,7 @@ def fig_reuse_both_directions(reuse, state_colors, project_lookup=None):
     developments doing the most reuse work -- in either direction -- lead. `state_colors` is
     the page's theme-matched kd.GAIN_STATE_COLORS / _DARK dict. `project_lookup`
     (kd.build_project_lookup's result, or None) joins each printed id to the real project
-    tracker for the HOVER text -- so hovering a bar shows what DNA_032 (say) actually was, not
+    tracker for the HOVER text -- so hovering a bar shows what GEN_014 (say) actually was, not
     just its id; degrades to bare ids with no lookup, same as kd.project_lookup_label."""
     work = reuse.copy()
     # _as_id_list: cheap guard, not a fix for a real bug -- kd._parse_id_list always returns a
