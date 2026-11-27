@@ -174,7 +174,7 @@ def _unfold(text):
 def _split_property(line):
     """'DTSTART;TZID=Europe/Lisbon:20261123T100000' -> ('DTSTART', {'TZID': ...}, '2026...').
     The split is on the first colon OUTSIDE double quotes -- a quoted parameter value is
-    allowed to contain one (CN="Sara: ADA" does happen), and splitting naively on the first
+    allowed to contain one (CN="Lee: Research" does happen), and splitting naively on the first
     colon would cut the property in the wrong place."""
     in_quotes = False
     for i, char in enumerate(line):
