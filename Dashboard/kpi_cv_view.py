@@ -467,7 +467,7 @@ def course_topics(courses, limit=None):
 
 
 def expertise(cv_stats, skill_rows, courses, heading="Specific expertise"):
-    """What she can do, as one block: the CV's own expertise cards, the skill areas (which
+    """What this person can do, as one block: the CV's own expertise cards, the skill areas (which
     used to be a separate section at the foot of the page and read thin split in two), and a
     full-width card of everything the courses covered, counted live.
 

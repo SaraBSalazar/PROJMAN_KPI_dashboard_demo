@@ -750,7 +750,7 @@ def _normalize_task_keys(all_tasks):
     """Fold project names that differ only by surrounding whitespace into one checklist.
 
     Checklists are keyed by project name. A name typed into the ratings sheet with a
-    trailing space ("MultiOMICs Dashboard ") used to be stored verbatim, so trimming the
+    trailing space ("Dataset Browser ") used to be stored verbatim, so trimming the
     name later left its tasks stranded under a key nothing looked up any more -- the tasks
     appeared to vanish. Everything is keyed by the stripped name now; this folds any older
     stranded entries back in (richer list first) and drops the empty placeholder rows a
@@ -1204,9 +1204,9 @@ GAIN_GROUPS = {
     "Collaboration with other facilities": "Reach & relationships",
 }
 
-# Where an unrecognized gain column (a header not in GAIN_GROUPS above) lands, so a column she
-# adds that the dashboard doesn't know about yet still renders somewhere sensible instead of
-# crashing. Also reported by name in the page's Data health section ("gain not assigned to a
+# Where an unrecognized gain column (a header not in GAIN_GROUPS above) lands, so a newly
+# added column the dashboard doesn't know about yet still renders somewhere sensible
+# instead of crashing. Also reported by name in the page's Data health section ("gain not assigned to a
 # group yet") so the gap stays visible rather than silently absorbed.
 GAIN_FALLBACK_GROUP = "Capability"
 
@@ -1214,20 +1214,15 @@ GAIN_FALLBACK_GROUP = "Capability"
 # for the exact same thing (verified by hand, not a typo to "fix") -- without this, a plain
 # name match would call both sides "unmatched". Keyed by the gains workbook's spelling,
 # normalized (stripped + lowercased); _NAME_ALIASES_REV below is the other direction.
+# Empty in this demo: its data is generated in one pass (generate_demo_data.py), so every
+# file already spells every development the same way and there is nothing to reconcile. A
+# real tracker grows the opposite way -- a tool typed into tools.xlsx one day and into the
+# gains workbook another, or a rename finished in one file and not yet in the next -- and
+# each such pair goes here as {gains-workbook spelling: other file's spelling}, normalized
+# (stripped + lowercased). Without the entry a plain name match reports BOTH sides as
+# unmatched and the development drops to the Status-column fallback (see _decide_state).
 NAME_ALIASES = {
-    "project starter (cookiecutter)": "project starter cockie cutter",
-    # Also a Special Project in the ratings sheet under this exact name -- that match is
-    # preferred for active/potential (see _decide_active), but tools.xlsx's spelling still
-    # needs the alias so it isn't flagged as an unmatched tool.
-    "metabolomics facility dashboard": "metabolomics facility pipeline dashboard",
-    # "Pipeline" is being renamed to "OMICs Pipelines" across the dashboard-owned files
-    # (Special_Projects_Ratings.xlsx, special_project_tasks.json); the gains workbook's own
-    # Overview sheet (SP01's Project cell) is read-only from here and gets updated by hand
-    # instead (see HOW_TO_RUN.md). Until -- and in case she ever only renames it in one
-    # place -- this alias keeps the two spellings resolving to the same development no matter
-    # which file still says the old name, so a half-finished rename never drops the match down
-    # to the Status-column fallback (see _decide_state).
-    "pipeline": "omics pipelines",
+    # "snippet library (templates)": "snippet libary",
 }
 _NAME_ALIASES_REV = {v: k for k, v in NAME_ALIASES.items()}
 
@@ -1293,7 +1288,7 @@ def _parse_id_list(value):
 
 
 # How a development came out of its parent. Two different stories the lineage tree used to
-# draw identically: SP08 REPLACED motif-scan-from-github (an evolution -- the parent is done),
+# draw identically: SP04 REPLACED SP03 (an evolution -- the parent is done),
 # while SP11 is an adaptation of SP01 that runs alongside it (an output -- the parent is very
 # much alive and just produced something). A parent token can say which by carrying one of
 # these words in brackets, e.g. "SP01 (output)"; with nothing in brackets it is an evolution,
@@ -1311,8 +1306,8 @@ def split_lineage_relation(token):
     """'SP01 (output)' -> ('SP01', 'output'); 'SP01' -> ('SP01', 'evolved').
 
     Only a bracket whose contents are a KNOWN relation word is treated as one. Several real
-    developments carry brackets in their own names -- "Project Starter (Cookiecutter)",
-    "Lipidomics toolkit (metabolomics)" -- and stripping those would quietly break the name
+    developments can carry brackets in their own names -- "Snippet Library (templates)",
+    "QC Dashboard (per-run)" -- and stripping those would quietly break the name
     match that resolves them to a node, so anything unrecognised is left on the token."""
     text = str(token or "").strip()
     match = _LINEAGE_BRACKET_RE.match(text)
@@ -1336,7 +1331,7 @@ def _classify_lineage_token(token, valid_ids, live_name_lookup):
     `kind` is "project" (an id matching _USER_PROJECT_ID_RE -- counts toward came_from_n) or
     "development" (anything else: this workbook's own SP../T.. ids, OR a free-text name that
     matches a live tool/Special Project which may not even have a row in this workbook yet,
-    e.g. "motif-scan-from-github" naming a tool that's only in tools_df). `key` is the
+    e.g. "variant-highlighter-skill" naming a tool that's only in tools_df). `key` is the
     identity used to index led_to (a development ID as written, or the token's normalized
     name) and `label` is what to show a person (resolved to the live table's own spelling
     for a name match, otherwise the token/ID as given).
@@ -1366,7 +1361,7 @@ def _is_parent(dev_id, project_name, led_to_by_name):
     ID, or by any of this development's own live-name variants (a Came from cell can name a
     parent either way, see _classify_lineage_token). On its own this is sufficient for "In
     use" (criterion 2): the thing it spawned is proof it's being used, even with zero user
-    projects served directly (e.g. Pipeline, once Metabolomics Facility Dashboard names it)."""
+    projects served directly (e.g. a platform, once a tool built on it names it)."""
     if led_to_by_name.get(dev_id):
         return True
     return any(led_to_by_name.get(v) for v in _name_variants(project_name))
@@ -1612,7 +1607,7 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
         lineage chart say why such a node has no Delivered/In use/Potential state of its own.
       - "led_to_by_name": the full lineage reverse-index, keyed by EVERY parent identity seen
         in any "Came from" cell (a workbook ID like "SP01", or a normalized free-text name) --
-        not just ones with their own Overview row, so a tool like "motif-scan-from-github"
+        not just ones with their own Overview row, so a tool like "variant-highlighter-skill"
         that isn't catalogued here at all can still be looked up (`led_to_by_name[norm_name]`)
         without KeyError. "developments"/"reuse"["led_to"] is this same dict filtered down to
         workbook rows and resolved to display names, for the page to render directly.
@@ -1644,7 +1639,7 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
 
     # Every live name (tool or Special Project) this dashboard knows about, normalized ->
     # that source's own display spelling -- lets a "Came from" cell name a parent that has NO
-    # row in this workbook at all (e.g. "motif-scan-from-github") and still have it resolve as
+    # row in this workbook at all (e.g. "variant-highlighter-skill") and still have it resolve as
     # lineage instead of being silently miscounted as an unrecognized user project.
     live_name_lookup = {}
     if tools_df is not None:
@@ -1676,7 +1671,7 @@ def load_expected_gains(goals_df=None, tools_df=None, project_lookup=None):
     led_to_by_name = {}
     # A lineage parent with no row in THIS workbook still has a live status in tools.xlsx --
     # most usefully "Deprecated", with its reason, which is exactly what a parent that got
-    # folded into its own child looks like (notion-to-elab -> Project Closer). Collected here,
+    # folded into its own child looks like (Request Triage Tool -> Template Library). Collected here,
     # keyed by the parent's normalized name, so the lineage chart can say WHY a node has no
     # Delivered/In use/Potential state instead of just "not tracked". Only non-blank statuses
     # are recorded; a parent that's simply absent from this workbook stays out of the dict.

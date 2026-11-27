@@ -114,7 +114,7 @@ def render_tool_editor(tools_df, row):
                 value=_clean(row["Steps"]), key=f"tsteps_{key}", height=100,
                 help="One row per line, as Step / How / AI involved?. Paste straight out of "
                      "Excel (tab-separated), or type a row by hand with ' | ' between columns, "
-                     "e.g. 'GitHub repo + push | Cookiecutter + git, on qds | No'.",
+                     "e.g. 'GitHub repo + push | project template + git, on the cluster | No'.",
             )
             st.caption("Deprecated = still on record, but not the thing to reach for anymore -- "
                        "it moves to its own (faded) section below instead of the gallery/overview.")

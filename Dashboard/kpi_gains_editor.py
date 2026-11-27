@@ -83,7 +83,7 @@ def _parent_options(overview, tools_df, exclude_id):
 
     Two kinds, deliberately in one list: a development this store already tracks (written as
     its own id, e.g. SP01 -- stable across renames) and a live tool with no row here at all
-    (written by name, e.g. motif-scan-from-github -- which is how a retired tool that a
+    (written by name, e.g. variant-highlighter-skill -- which is how a retired tool that a
     tracked development grew out of gets onto the lineage tree without needing gains of its
     own). `exclude_id` keeps a development out of its own parent list."""
     options, seen = {}, set()
@@ -116,8 +116,8 @@ def _save_reuse(dev_id, project_ids, parent_tokens, serves_ids, constant_use,
     out on read), with the ids first so the cell still reads naturally in Excel.
 
     "Came from (n)" is only touched when ids are actually listed. A handful of rows carry a
-    typed count with no ids (OmicsXplorer, Curated MS-omics tools, omics-inputs-agent: "built
-    out of 1 project, we never wrote down which"), and clearing the list must not throw that
+    typed count with no ids ("built out of 1 project, we never wrote down which" -- a real
+    tracker collects a few of those), and clearing the list must not throw that
     away -- it is real information this editor has no way to recover."""
     sheets = kd.load_gains_sheets()
     reuse = sheets["Reuse"]
@@ -243,8 +243,8 @@ def render_reuse_editor(name, key_prefix, readonly=False):
                 help="Leave empty when this development REPLACED its parent (the parent is "
                      "usually retired afterwards) — that's an evolution, the lineage tree's "
                      "default. Tick a parent here when it produced this one and carries on "
-                     "itself, like OMICs Pipelines producing the Metabolomics Facility "
-                     "Dashboard. The tree draws the two with different arrows. Anything "
+                     "itself, like the variant-highlighter-skill producing the Dataset "
+                     "Browser. The tree draws the two with different arrows. Anything "
                      "picked here that isn't picked above is ignored.",
             )
             picked_serves = st.multiselect(

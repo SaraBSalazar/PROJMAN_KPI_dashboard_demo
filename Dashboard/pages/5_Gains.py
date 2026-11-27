@@ -122,7 +122,7 @@ with st.expander(f"ℹ️ How 'Delivered', '{IN_USE_LABEL}' and 'Potential' are 
         f"- **{IN_USE_LABEL}** -- not finished, but demonstrably being used already (the "
         "underlying state is still called \"In use\" everywhere in the data -- only this "
         "label spells out that it covers something still being actively built/iterated on "
-        "too, e.g. OMICs Pipelines). Any ONE of these moves it here: it serves a "
+        "too, e.g. the Open Analysis Toolkit). Any ONE of these moves it here: it serves a "
         "real user project (listed under **User projects served** on the Reuse sheet), OR "
         "another development names it as where **it** came from (listed under that other "
         "development's **Came from**, on the Reuse sheet -- having spawned something else is "
@@ -179,44 +179,70 @@ def _names(rows, limit=4):
     return ", ".join(names)
 
 
-def _audience_coverage_caption(developments):
-    """How much of the "What delivers what" set the audience chart actually speaks for.
-    Derived every load like _insight_caption, never hardcoded. The counts a reader would
-    otherwise have to get by counting bars -- and, for the developments that land in NO row
-    at all, couldn't get from the chart however long they looked at it, since a development
-    with no audience is drawn as nothing rather than as an empty row."""
+def _audience_coverage(developments):
+    """(subtitle, detail) for the audience chart: a short line that goes INSIDE the figure,
+    and the markdown behind its "How these numbers are calculated" expander.
+
+    The numbers belong in the figure because they are what the chart is showing -- how much
+    of the "What delivers what" set it speaks for. It never speaks for all of it: a
+    development with no audience flag is drawn as nothing, not as an empty row, so without
+    the count a reader has no way to know anyone is missing. The prose stays folded away."""
     n_total = len(developments)
     has_flag = developments[kd.GAIN_AUDIENCE_FLAGS].any(axis=1)
     is_ada = developments["Output level"].isin(kd.GAIN_ADA_OUTPUT_LEVELS)
     ada_only = developments[~has_flag & is_ada]
     nowhere = developments[~has_flag & ~is_ada]
-
     n_flagged = int(has_flag.sum())
-    parts = [f"**{n_flagged} of the {n_total} "
-             f"{_vb(n_total, 'development', 'developments')}** in *What delivers what* "
-             f"{_vb(n_flagged, 'claims', 'claim')} at least one of the 5 audience/output "
-             f"flags above."]
+
+    bits = [f"{n_flagged} of {n_total} developments carry at least one flag"]
     if len(ada_only):
-        parts.append(f"**{len(ada_only)}** {_vb(len(ada_only), 'claims', 'claim')} none of "
-                     f"them and {_vb(len(ada_only), 'appears', 'appear')} only in the **ADA / "
-                     f"Personal** row -- built for ADA or personal/internal use, no outside "
-                     f"audience claimed yet ({_names(ada_only)}).")
+        bits.append(f"{len(ada_only)} appear only as ADA / Personal")
     if len(nowhere):
-        # Not a styling choice: this is the one case the chart genuinely cannot show, so the
-        # caption is the only place it can be said. Reads as a data-health nudge on purpose.
-        parts.append(f"**{len(nowhere)}** {_vb(len(nowhere), 'appears', 'appear')} in **no "
-                     f"row of this chart at all** -- neither "
-                     f"a flag nor an ADA/Personal output level, so nothing on record says who "
-                     f"they are for ({_names(nowhere)}).")
-    return " ".join(parts)
+        bits.append(f"{len(nowhere)} in no row at all")
+    subtitle = "  \u00b7  ".join(bits)
+
+    detail = [
+        f"- **The 5 flag rows** are the `x` columns on the gains workbook's Overview sheet. "
+        f"**{n_flagged} of the {n_total} developments** carry at least one.",
+        "- **ADA / Personal** (orange marker) is a different column -- `Output level` = "
+        "Internal ADA or Internal Worker -- and a different question: not *is there an "
+        "internal user* but *is this for ADA or personal/internal use rather than for "
+        "anyone it would call a user at all*. Pinned first because that contrast is the "
+        "point, not its size.",
+        "- **Potential external reach** is a *potential* -- the development could reach past "
+        "the institution -- not a count of external users it already has.",
+        f"- Bar colour is the usual Delivered / {IN_USE_LABEL} / Potential split, so colour "
+        "always means maturity, on every chart on this page.",
+    ]
+    if len(ada_only):
+        detail.append(f"- **{len(ada_only)}** {_vb(len(ada_only), 'carries', 'carry')} no "
+                      f"flag and so {_vb(len(ada_only), 'appears', 'appear')} only in the "
+                      f"ADA / Personal row -- no outside audience claimed yet "
+                      f"({_names(ada_only)}).")
+    if len(nowhere):
+        # The one case the chart genuinely cannot show -- no flag AND no ADA output level
+        # means no row anywhere -- so this line is the only place it can be said at all.
+        detail.append(
+            f"- **{len(nowhere)}** {_vb(len(nowhere), 'has', 'have')} neither a flag nor an "
+            f"ADA/Personal output level, so {_vb(len(nowhere), 'it', 'they')} "
+            f"**{_vb(len(nowhere), 'appears', 'appear')} in no row of this chart at all** and "
+            f"nothing on record says who {_vb(len(nowhere), 'it is', 'they are')} for "
+            f"({_names(nowhere)}).")
+    return subtitle, "\n".join(detail)
 
 
-def _reuse_coverage_caption(reuse, developments):
-    """Same idea for the reuse butterfly: how many of the developments in "What delivers what"
-    the chart draws at all, split by which side they land on. Rows with nothing on either side
-    are dropped by fig_reuse_both_directions (by design -- an all-zero row is noise), so
-    without this the chart silently speaks for a subset and looks like it speaks for all."""
-    n_developments = len(developments)
+def _reuse_coverage(reuse, developments):
+    """(subtitle, detail) for the reuse butterfly, same split as _audience_coverage.
+
+    fig_reuse_both_directions drops any row that is empty on both sides (an all-zero row is
+    noise), so the chart draws a subset while looking like it draws everything. The
+    subtitle's numbers add up to the development count, which is also what reconciles this
+    chart with the larger "Built out of real user projects" tile at the top of the page:
+    that tile counts came_from_n, which falls back to the "Came from (n)" cell's TYPED
+    number for a row recording HOW MANY user projects fed a development without listing
+    WHICH. Those rows are real -- so the tile is right to count them -- and undrawable, so
+    the chart can't."""
+    n_total = len(developments)
     left_n = reuse["came_from_projects"].map(len)
     right_n = reuse["serves_project_ids"].map(len)
     n_built = int((left_n > 0).sum())
@@ -224,61 +250,77 @@ def _reuse_coverage_caption(reuse, developments):
     n_both = int(((left_n > 0) & (right_n > 0)).sum())
     drawn_ids = set(reuse.loc[(left_n + right_n) > 0, "ID"])
     n_drawn = len(drawn_ids)
-    # The three-way split below is what reconciles this chart with the "Built out of real user
-    # projects" tile at the top of the page, which is larger. The tile counts came_from_n,
-    # which falls back to the "Came from (n)" cell's TYPED number for a row that records how
-    # many user projects fed a development without listing which ones. That row has a real
-    # number behind it, so the tile is right to count it -- but there is no id to put on a
-    # bar, so the chart cannot draw it. Saying so here is the only place the two numbers stop
-    # looking like a contradiction, and it names the rows whose ids are worth typing in.
-    counted_only_ids = set(reuse.loc[(reuse["came_from_n"].notna()) & (left_n + right_n == 0), "ID"])
-    # Counted off the DEVELOPMENTS, not off the Reuse sheet: a development with no Reuse row
-    # at all (hand-deleted in Excel -- the editors always write the three sheets together)
-    # has nothing recorded just as much as one with a row of empty cells, and only Overview's
-    # own "Use pattern" column can still say whether it is constant-use.
-    absent = developments[~developments["ID"].isin(drawn_ids | counted_only_ids)]
-    n_absent = len(absent)
+    counted_only = reuse.loc[(reuse["came_from_n"].notna()) & (left_n + right_n == 0)]
+    counted_ids = set(counted_only["ID"])
+    # Counted off the DEVELOPMENTS, not the Reuse sheet: a development with no Reuse row at
+    # all (only reachable by hand-editing the workbook -- the editors write the three sheets
+    # together) has nothing recorded just as much as one with a row of empty cells, and only
+    # Overview's own "Use pattern" column can still say whether it is constant-use.
+    absent = developments[~developments["ID"].isin(drawn_ids | counted_ids)]
     absent_constant = int(absent["constant_use"].sum())
 
-    benefits_txt = (f"**{n_benefits}** with at least one project benefiting from them"
-                    if n_benefits else "**none** yet with a project recorded as benefiting from it")
-    parts = [f"**{n_drawn} of the {n_developments} "
-             f"{_vb(n_developments, 'development', 'developments')}** in *What delivers what* "
-             f"{_vb(n_drawn, 'appears', 'appear')} above -- **{n_built}** built out of real "
-             f"user projects, {benefits_txt}" + (f", **{n_both}** both" if n_both else "") + "."]
-    if counted_only_ids:
-        n_counted = len(counted_only_ids)
-        parts.append(f"**{n_counted}** more {_vb(n_counted, 'records', 'record')} a *number* "
-                     f"of user projects under **Came from (n)** without listing which ones, so "
-                     f"{_vb(n_counted, 'it counts', 'they count')} toward the headline tile "
-                     f"above but {_vb(n_counted, 'has', 'have')} no id to draw a bar from "
-                     f"(type the ids on the development's own card and "
-                     f"{_vb(n_counted, 'it joins', 'they join')} this chart).")
-    if n_absent > 0:
+    bits = [f"{n_drawn} of {n_total} developments drawn"]
+    if len(counted_ids):
+        bits.append(f"{len(counted_ids)} counted but not listed")
+    if len(absent):
+        bits.append(f"{len(absent)} nothing recorded")
+    subtitle = "  \u00b7  ".join(bits)
+
+    benefits_txt = (f"**{n_benefits}** have a project benefiting from them"
+                    if n_benefits else "**none** yet has a project recorded as benefiting from it")
+    detail = [
+        "- **Left of zero** = user projects the development was *built out of* (`Came "
+        "from`); **right** = user projects that *benefit* from it (`User projects served`). "
+        "A lineage parent named in the same cell is another development, not a user "
+        "project, so it is excluded here -- it belongs to the Lineage tree below.",
+        f"- **{n_drawn} of the {n_total} developments** are drawn: **{n_built}** built out "
+        f"of real user projects, {benefits_txt}"
+        + (f", **{n_both}** both" if n_both else "") + ".",
+    ]
+    if len(counted_ids):
+        n = len(counted_ids)
+        names = ", ".join(counted_only["Development / tool"])
+        detail.append(
+            f"- **{n}** more {_vb(n, 'records', 'record')} a *number* under **Came from (n)** "
+            f"without listing which projects, so {_vb(n, 'it counts', 'they count')} toward "
+            f"the **Built out of real user projects** tile at the top of this page but "
+            f"{_vb(n, 'has', 'have')} no id to draw a bar from -- which is why that tile "
+            f"reads higher than this chart. Type the ids on the development's own card and "
+            f"{_vb(n, 'it joins', 'they join')} the chart ({names}).")
+    if len(absent):
         tail = (f" -- {absent_constant} of those {_vb(absent_constant, 'is', 'are')} "
-                f"constant-use, which the workbook's own convention leaves uncounted on "
-                f"purpose, leaving "
-                f"**{n_absent - absent_constant}** with reuse genuinely unrecorded so far"
+                f"constant-use (used daily / by everyone rather than tied to a countable "
+                f"number of projects, which the workbook leaves uncounted on purpose), "
+                f"leaving **{len(absent) - absent_constant}** genuinely unrecorded so far"
                 if absent_constant else "")
-        parts.append(f"Nothing at all is recorded in either direction for the remaining "
-                     f"**{n_absent}**{tail}.")
-    return " ".join(parts)
+        detail.append(f"- Nothing at all is recorded in either direction for the remaining "
+                      f"**{len(absent)}**{tail}.")
+    if not int(right_n.sum()):
+        detail.append("- The right-hand *benefits* side is empty because nothing is listed "
+                      "under **User projects served** on the Reuse sheet yet -- not broken, "
+                      "just unfilled. The axis stays two-sided so that reads as half a "
+                      "picture waiting, rather than as a one-sided chart.")
+    return subtitle, "\n".join(detail)
 
 
 # --- What delivers what ------------------------------------------------------------------
 st.subheader("What delivers what", anchor="gains-matrix")
-st.caption(f"Every dot in a row shares that development's state -- Delivered developments read "
-           f"green, {IN_USE_LABEL} blue, Potential grey, top to bottom. Every dot is filled: a "
-           "gap here means that development doesn't deliver that gain, never that it's only "
-           f"potential. The coloured header strip groups the {len(gain_columns)} gains into "
-           "their 4 themes. **Totals** sit on both margins -- gain types per development down "
-           "the right, developments per gain along the bottom; hover a column total for its "
-           f"Delivered/{IN_USE_LABEL}/Potential split.")
 st.plotly_chart(
     kc.fig_gains_matrix(gains_long, developments, STATE_COLORS, gain_columns, gain_groups, GROUP_COLORS),
     width="stretch",
 )
 st.caption(_insight_caption(gain_summary))
+with st.expander("ℹ️ How these numbers are calculated"):
+    st.markdown(
+        f"- Every dot in a row shares that development's state -- Delivered reads green, "
+        f"{IN_USE_LABEL} blue, Potential grey, top to bottom.\n"
+        "- Every dot is **filled**: a gap means that development doesn't deliver that gain, "
+        "never that it only might.\n"
+        f"- The coloured header strip groups the {len(gain_columns)} gains into their 4 themes.\n"
+        "- **Totals** sit on both margins -- gain types per development down the right, "
+        f"developments per gain along the bottom. Hover a column total for its Delivered / "
+        f"{IN_USE_LABEL} / Potential split."
+    )
 
 if not READONLY:
     # Directly under the chart it feeds, not in a settings corner: ticking a box here is the
@@ -305,15 +347,15 @@ if not READONLY:
 
 # --- Audience & outputs -------------------------------------------------------------------
 st.subheader("Audience & outputs", anchor="gains-audience")
-st.plotly_chart(kc.fig_audience_outputs(developments, STATE_COLORS, ADA_COLOR), width="stretch")
-st.caption("**ADA / Personal** (orange marker) is the innermost tier -- built for ADA or "
-           "personal/internal use (`Output level` = Internal ADA or Internal Worker), "
-           "inward-facing in a way even the **Internal users** row below it isn't: that row "
-           "and **Potential external reach** are both about people outside ADA, just at "
-           "different distances, while ADA/Personal is about work that never left the "
-           "building at all. That last row is a *potential* -- the development could reach "
-           "past the institution -- not a count of external users it already has.")
-st.caption(_audience_coverage_caption(developments))
+# The coverage counts ride inside the figure, under its title, rather than in a caption
+# below it: they are what the chart is showing, so they belong where it is being read.
+_aud_subtitle, _aud_detail = _audience_coverage(developments)
+st.plotly_chart(
+    kc.fig_audience_outputs(developments, STATE_COLORS, ADA_COLOR, subtitle=_aud_subtitle),
+    width="stretch",
+)
+with st.expander("ℹ️ How these numbers are calculated"):
+    st.markdown(_aud_detail)
 
 # --- Value potential: its own full-width section ------------------------------------------
 # Used to sit squeezed into the narrow right column beside the audience chart, under a bare
@@ -377,18 +419,16 @@ if not READONLY:
 
 # --- Reuse: built out of real user work, and who benefits from it --------------------------
 st.subheader("Reuse: built out of real user work, and who benefits", anchor="gains-reuse")
-st.plotly_chart(kc.fig_reuse_both_directions(reuse, STATE_COLORS, project_lookup), width="stretch")
-st.caption(_reuse_coverage_caption(reuse, developments))
-if not reuse["serves_project_ids"].map(len).sum():
-    st.caption("The right-hand 'benefits' side is empty because nothing is listed yet under "
-               "**User projects served** on the Reuse sheet -- it's not broken, there's just "
-               "no data there yet. Add user project ids (`GEN_###` / `PROT_###`) to that column "
-               "for a development and this chart's right half fills in on its own.")
-constant_use_names = list(reuse.loc[reuse["constant_use"], "Development / tool"])
-if constant_use_names:
-    st.caption("Constant-use (no project count, by the workbook's own convention -- these are "
-               "used daily/by everyone rather than tied to a countable number of projects): "
-               + ", ".join(constant_use_names))
+_reuse_subtitle, _reuse_detail = _reuse_coverage(reuse, developments)
+st.plotly_chart(
+    kc.fig_reuse_both_directions(reuse, STATE_COLORS, project_lookup, subtitle=_reuse_subtitle),
+    width="stretch",
+)
+with st.expander("ℹ️ How these numbers are calculated"):
+    st.markdown(_reuse_detail)
+    constant_use_names = list(reuse.loc[reuse["constant_use"], "Development / tool"])
+    if constant_use_names:
+        st.markdown("- **Constant-use** developments: " + ", ".join(constant_use_names) + ".")
 
 # --- Lineage: a TREE of development -> development lineage, and nothing else ---------------
 # Deliberately split out of the reuse picture above: "built from user work" (14 edges) and
@@ -400,20 +440,22 @@ if constant_use_names:
 # chips below this chart; it was dropped for exactly that reason -- it added no information
 # the Reuse chart didn't already carry, it just made the page longer.)
 st.subheader("Lineage: development evolution", anchor="gains-lineage-tree")
-st.caption("ONLY development/tool -> development/tool edges -- a Special Project or tool "
-           "literally spawning another, e.g. an AI skill later rebuilt as a full Special "
-           "Project. No user-project id is ever drawn on this chart (that's the Reuse chart "
-           "above). Shape is Special Project / Tool / AI Skill; fill is the same "
-           f"Delivered/{IN_USE_LABEL}/Potential colour as every other chart on this page; a "
-           "hollow node has no state to show -- it's either deprecated (the usual, healthy "
-           "end for a parent its child took over -- the Tools page holds the reason) or just "
-           "not tracked in the gains workbook. Hover any node to see which.")
-st.caption("The **arrow** says how the child came about. A violet solid arrow is an "
-           "**evolution** -- the parent became the child and is usually retired afterwards "
-           "(notion-to-elab → Project Closer). A sienna open arrow is an **output** -- the "
-           "parent produced it and carries on itself (OMICs Pipelines → Metabolomics "
-           "Facility Dashboard). Set it on the development's own card, under "
-           "**🔗 Reuse & lineage**.")
+with st.expander("ℹ️ How to read this tree"):
+    st.markdown(
+        "- **Only** development → development edges: a Special Project or tool literally "
+        "spawning another, e.g. an AI skill later rebuilt as a full Special Project. No "
+        "user-project id is ever drawn here — those are the Reuse chart above.\n"
+        "- **Shape** is Special Project / Tool / AI Skill. **Fill** is the same "
+        f"Delivered / {IN_USE_LABEL} / Potential colour as every chart on this page.\n"
+        "- A **hollow** node has no state to show — either deprecated (the usual, healthy "
+        "end for a parent its child took over; the Tools page holds the reason) or simply "
+        "not tracked in the gains workbook. Hover it to see which.\n"
+        "- The **arrow** says how the child came about: a violet solid arrow is an "
+        "**evolution** (the parent became the child and is usually retired afterwards — "
+        "Request Triage Tool → Template Library); a sienna open arrow is an **output** (the parent "
+        "produced it and carries on — variant-highlighter-skill → Dataset Browser). "
+        "Set it on the development's own card, under **🔗 Reuse & lineage**."
+    )
 n_evolved = int(reuse["came_from_developments"].map(len).sum())
 if not n_evolved:
     st.info("No development has evolved into another yet -- every **Came from** entry on the "

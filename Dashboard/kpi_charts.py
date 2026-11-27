@@ -49,11 +49,21 @@ def set_theme(dark):
 FONT_FAMILY = "IBM Plex Sans, Segoe UI, sans-serif"
 
 
-def base_layout(title, width, height, bgcolor=None, font_color=None):
+def base_layout(title, width, height, bgcolor=None, font_color=None, subtitle=None):
+    """`subtitle` is a second, smaller line under the chart title, inside the figure. It is
+    for the one or two numbers that say what the chart is showing -- how much of a set it
+    draws, say -- which belong where the chart is being read, not in a caption below it that
+    a reader has to look away to find. Keep it to a short line: it is a label, not prose,
+    and anything longer belongs in the page's "How these numbers are calculated" expander."""
     bgcolor = bgcolor or TL_SURFACE
     font_color = font_color or TL_INK_PRIMARY
+    title_spec = dict(text=title, font=dict(family=FONT_FAMILY, color=font_color, size=17),
+                      x=0.01, xanchor="left")
+    if subtitle:
+        title_spec["subtitle"] = dict(
+            text=subtitle, font=dict(family=FONT_FAMILY, color=TL_INK_SECONDARY, size=12))
     return dict(
-        title=dict(text=title, font=dict(family=FONT_FAMILY, color=font_color, size=17), x=0.01, xanchor="left"),
+        title=title_spec,
         font=dict(family=FONT_FAMILY, color=font_color, size=13),
         plot_bgcolor=bgcolor,
         paper_bgcolor=bgcolor,
@@ -2013,8 +2023,8 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
     dev = dev.sort_values(["_state_rank", "_n_gains"], ascending=[True, False]).reset_index(drop=True)
 
     wrapped_x = [_wrap_label(g, 14) for g in gain_columns]
-    # 34, not 26: wide enough that today's longest development names ("Metabolomics Facility
-    # Dashboard", "Lipidomics toolkit (metabolomics)") stay on ONE line -- a two-line wrapped
+    # 34, not 26: wide enough that the longest development names (the demo's "variant-
+    # Browser", "Snippet Library (templates)") stay on ONE line -- a two-line wrapped
     # label needs roughly double the row's vertical room, which is what was colliding with its
     # neighbours before. The per-row height bump below is the backstop for whatever still does
     # wrap (a future longer name), not the fix on its own.
@@ -2134,7 +2144,7 @@ def fig_gains_matrix(gains_long, developments, state_colors, gain_columns, gain_
     fig.update_layout(
         # 36px/row (was 30): the old pitch was sized for a one-line label and collided the
         # moment a name wrapped to two lines (e.g. "Functional enrichment analysis" running
-        # into "Lipidomics toolkit (metabolomics)" above it). 36px comfortably fits a two-line
+        # into the long development name above it). 36px comfortably fits a two-line
         # 11pt label with clearance even though width=34 above means almost nothing wraps today.
         **base_layout("What delivers what", width=1000,
                       height=max(440, 165 + 36 * len(dev) + 16 * tick_lines)),
@@ -2156,7 +2166,7 @@ _AUDIENCE_FLAG_LABELS = {
 }
 
 
-def fig_audience_outputs(developments, state_colors, ada_color):
+def fig_audience_outputs(developments, state_colors, ada_color, subtitle=None):
     """The 5 boolean audience/output flags (Internal users, External users, Facility use /
     collaboration, Publication potential, Market-equivalent value) PLUS one more row built
     from a different column -- "ADA / Personal", `Output level` in {Internal ADA, Internal
@@ -2202,7 +2212,8 @@ def fig_audience_outputs(developments, state_colors, ada_color):
         _empty(fig, "No audience/output flags set yet")
         fig.update_xaxes(visible=False)
         fig.update_yaxes(visible=False)
-        fig.update_layout(**base_layout("Audience & outputs", width=950, height=260))
+        fig.update_layout(**base_layout("Audience & outputs", width=950, height=260,
+                                        subtitle=subtitle))
         return fig
 
     _state_stack_traces(fig, df, "Flag", state_colors)
@@ -2217,9 +2228,16 @@ def fig_audience_outputs(developments, state_colors, ada_color):
     ]
     fig.update_yaxes(tickmode="array", tickvals=wrapped, ticktext=ticktext)
 
-    fig.update_layout(
-        **base_layout("Audience & outputs", width=950, height=max(260, 90 + 42 * len(df))),
-    )
+    # A subtitle is a second title line: the figure needs both more height and a deeper top
+    # margin for it, or the first row's bar rides up under it. update_layout merges margins
+    # recursively, so deepening t here leaves _state_stack_traces' l/r/b alone -- and with no
+    # subtitle the geometry is exactly what it was before subtitles existed.
+    layout = base_layout("Audience & outputs", width=950, subtitle=subtitle,
+                         height=max(272, 102 + 42 * len(df)) if subtitle
+                         else max(260, 90 + 42 * len(df)))
+    if subtitle:
+        layout["margin"] = dict(t=92)
+    fig.update_layout(**layout)
     return fig
 
 
@@ -2242,7 +2260,7 @@ def _side_text(ids):
     return f"{len(ids)} projects"
 
 
-def fig_reuse_both_directions(reuse, state_colors, project_lookup=None):
+def fig_reuse_both_directions(reuse, state_colors, project_lookup=None, subtitle=None):
     """Diverging ("butterfly") bars, one row per development: projects involved in BUILDING it
     (`came_from_projects` -- user-project ids only; a lineage parent named in the same "Came
     from" cell, `came_from_developments`, is a different development, never a user project, so
@@ -2289,7 +2307,8 @@ def fig_reuse_both_directions(reuse, state_colors, project_lookup=None):
         _empty(fig, "No reuse recorded yet -- neither 'Came from' nor 'User projects served' has any ids")
         fig.update_xaxes(visible=False)
         fig.update_yaxes(visible=False)
-        fig.update_layout(**base_layout("Reuse: built from & benefits", width=950, height=260))
+        fig.update_layout(**base_layout("Reuse: built from & benefits", width=950, height=260,
+                                        subtitle=subtitle))
         return fig
 
     wrapped_all = [_wrap_label(n, 24) for n in df["Development / tool"]]
@@ -2360,8 +2379,12 @@ def fig_reuse_both_directions(reuse, state_colors, project_lookup=None):
     fig.update_yaxes(showgrid=False, tickfont=dict(size=12, color=TL_INK_SECONDARY),
                       categoryorder="array", categoryarray=wrapped_all, autorange="reversed")
     fig.update_layout(
-        **base_layout("Reuse: built from & benefits", width=1050, height=max(280, 90 + 34 * len(df))),
-        margin=dict(l=10, r=30, t=70, b=60), bargap=0.35,
+        # Height and top margin both grow with the subtitle -- it is a second title line,
+        # sitting above the legend, which anchors to the plot area and so moves down with it.
+        **base_layout("Reuse: built from & benefits", width=1050, subtitle=subtitle,
+                      height=max(302, 112 + 34 * len(df)) if subtitle
+                      else max(280, 90 + 34 * len(df))),
+        margin=dict(l=10, r=30, t=92 if subtitle else 70, b=60), bargap=0.35,
         legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1),
     )
     return fig
@@ -2438,7 +2461,7 @@ def _lineage_resolve_parent(label, dev_by_id, dev_by_name):
     """One label from reuse["came_from_developments"] -> (node_id, display_name, kind, state).
     kpi_data already resolved the raw "Came from" token to one of: this workbook's own ID
     (e.g. "SP01"), a live tool/Special-Project display name that may have NO row here at all
-    (e.g. "motif-scan-from-github" -- a real tool, just not one with its own gains tracked),
+    (e.g. "variant-highlighter-skill" -- a real tool, just not one with its own gains tracked),
     or -- if nothing matched at load time -- the raw text as typed. Try an ID match first,
     then a name match against this workbook's own Project column; anything else becomes an
     "untracked" node: real, just with no Category/state of its own, so it draws as a neutral
@@ -2446,8 +2469,8 @@ def _lineage_resolve_parent(label, dev_by_id, dev_by_name):
 
     `dev_by_name` is keyed by every kd._name_variants() spelling of each development's Project
     column, not just its own literal text -- kd.load_expected_gains may have already resolved
-    the raw "Came from" token to the LIVE dashboard's spelling via NAME_ALIASES (e.g. "Pipeline"
-    -> "OMICs Pipelines" once that rename lands in Special_Projects_Ratings.xlsx but before
+    the raw "Came from" token to the LIVE dashboard's spelling via NAME_ALIASES (e.g. "Toolkit"
+    -> "Open Analysis Toolkit" once that rename lands in Special_Projects_Ratings.xlsx but before
     anyone edits this read-only workbook's own Project cell to match) -- without the alias
     applied here too, a tracked development would wrongly fall through to "untracked" the
     moment its two name spellings disagree, discarding its real Category/state for no reason
@@ -2481,7 +2504,7 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
     parent of its own (via `came_from_developments`); depth N is 1 + max(depth(parents)) --
     same cycle-safe recursion as the old fig_lineage (a node still mid-calculation counts as
     depth 0 rather than recursing forever, guarding against a malformed workbook that names a
-    cycle). A chain like "motif-scan-from-github -> FT Motif Search" reads as exactly two
+    cycle). A chain like "Request Triage Tool -> Template Library" reads as exactly two
     nodes, one column apart, joined by one arrow.
 
     Two independent encodings, same "colour always means one thing" rule as the rest of this
@@ -2490,15 +2513,15 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
       - FILL = state (`state_colors`, the page's theme-matched kd.GAIN_STATE_COLORS / _DARK
         dict) for a tracked development; HOLLOW (surface fill, neutral outline) for an
         "untracked" lineage parent (a real tool/Special Project named under some development's
-        Came from that has no row of its own in this workbook, e.g. "motif-scan-from-github"
+        Came from that has no row of its own in this workbook, e.g. "variant-highlighter-skill"
         -- see _lineage_resolve_parent), which has no Delivered/In use/Potential state to show.
         Hollow rather than grey-filled on purpose -- see the marker trace below.
     Both encodings are spelled out in the legend, in two titled groups ("Shape = kind" /
     "Fill = state"), with only the states actually present in the tree listed.
     Edges carry the third encoding: ARROW COLOUR + HEAD = how the child came about --
-    "evolved into" (the parent became the child and is usually retired: motif-scan-from-github
-    -> FT Motif Search) or "output of" (the parent produced it and carries on: OMICs Pipelines
-    -> Metabolomics Facility Dashboard). Which one an edge is comes from the parent token
+    "evolved into" (the parent became the child and is usually retired: Request Triage Tool
+    -> Template Library) or "output of" (the parent produced it and carries on:
+    variant-highlighter-skill -> Dataset Browser). Which one an edge is comes from the parent token
     itself ("SP01 (output)", see kd.split_lineage_relation); a token with nothing in brackets
     is an evolution. Both are spelled out in a third legend group, and they differ in head
     shape as well as colour so the distinction survives without colour.
@@ -2507,7 +2530,7 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
     a plain Scatter line) so direction always reads unambiguously -- both ends held back from
     the node markers (`standoff`) in pixels, and the tail held back FAR more (`startstandoff`)
     so a same-row edge (the common case for a simple one-parent one-child chain, e.g. the
-    motif-scan example above, where the single parent and single child both land at the span's
+    two-node example above, where the single parent and single child both land at the span's
     midpoint) doesn't run straight through the source node's own label -- which sits
     immediately beside it, at the identical height, by design (see LABEL_XSHIFT below).
 
@@ -2520,7 +2543,7 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
     `parent_status` (kd.load_expected_gains's "lineage_parent_status", or None) is the live
     tools.xlsx status of a parent that has no row in this workbook -- today only ever
     "Deprecated". A parent being deprecated is the normal, healthy end state for one that got
-    folded into its own child (notion-to-elab -> Project Closer), not a data gap, so the node
+    folded into its own child (Request Triage Tool -> Template Library), not a data gap, so the node
     says which it is rather than leaving a reader to guess from a hollow dot. The Tools page
     is where the deprecation reason itself lives; this chart only reports the fact.
 
@@ -2690,7 +2713,7 @@ def fig_lineage_tree(developments, reuse, state_colors, project_lookup=None,
     # marker (horizontally), not above it -- preserved from the old fig_lineage, which already
     # solved the ambiguity this avoids: a label floating above one dot can look like it's
     # floating above a neighbouring column's dot instead, the moment two nodes in adjacent
-    # columns land at a similar height (seen for real with "FT Motif Search" and "OMICs
+    # columns land at a similar height (seen for real with two long gain names in the
     # Pipelines"). Horizontal adjacency on the dot's own baseline doesn't have that failure
     # mode -- the label is unambiguously attached to whichever dot sits level with it.
     # `yanchor="middle"` keeps a 2-3 line wrapped name centred on its dot as a block.
@@ -2822,7 +2845,7 @@ CV_SKILL_SYMBOLS = {"not used": "line-ew", "basic": "circle-open", "used": "circ
 def fig_cv_skill_matrix(skill_matrix, title="What each era was built on"):
     """Skills down the side, career eras across the top, one marker per cell: used, used at a
     basic level, or not used. The point is the diagonal it draws -- wet-lab and genomics
-    giving way to OMICs, pipelines and user support -- so the rows are ordered by when a skill
+    giving way to pipelines and user support -- so the rows are ordered by when a skill
     was last in use rather than alphabetically."""
     rows = [dict(r) for r in (skill_matrix or [])]
     fig = go.Figure()
