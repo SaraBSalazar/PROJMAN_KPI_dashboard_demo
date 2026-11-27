@@ -3748,6 +3748,14 @@ def _group_label(value):
     return text if text and text.lower() != "nan" else "(unlabelled)"
 
 
+def day_row(frame):
+    """Hours per weekday (Monday first) for a frame of segments -- the row the breakdown
+    grid draws, and the same split the push preview shows against each proposed time-log
+    row. Shared so the two can never disagree about which day an hour landed on."""
+    by_day = frame.groupby("day")["hours"].sum()
+    return [float(by_day.get(d, 0.0)) for d in range(7)]
+
+
 def tracker_breakdown(segments, level1, level2=None):
     """The week's hours as the two-level day grid the breakdown table draws.
 
@@ -3766,10 +3774,6 @@ def tracker_breakdown(segments, level1, level2=None):
     df["_l1"] = df[level1].map(_group_label)
     if level2:
         df["_l2"] = df[level2].map(_group_label)
-
-    def day_row(frame):
-        by_day = frame.groupby("day")["hours"].sum()
-        return [float(by_day.get(d, 0.0)) for d in range(7)]
 
     groups = []
     for label, rows in df.groupby("_l1", sort=False):
@@ -3849,6 +3853,10 @@ def timelog_push_preview(timelog_df, timelog_raw, segments, week_start):
             proposals.append({
                 **fields,
                 "hours": hours, "hrs": hrs, "min": mins,
+                # Which days these hours came off, split by the breakdown's own function.
+                # A row proposed for the time log is only checkable if you can see where it
+                # came from, and "where" for a weekly row means which days.
+                "days": day_row(rows),
                 "descriptions": descriptions, "current_hours": current,
                 "current_timesheet": timesheet, "current_notes": notes,
                 "row_index": row_index, "status": status,

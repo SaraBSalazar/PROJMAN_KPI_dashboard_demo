@@ -1022,6 +1022,11 @@ if not READONLY:
                 "Project": p["project"] or "—", "Category": p["category"] or "—",
                 "Major task": p["major_task"] or "—",
                 "Tracked": kd.format_hm(p["hours"]),
+                # The same split the Breakdown tab shows, from kd.day_row — a weekly row is
+                # only checkable against the week you remember if it says which days it came
+                # off. Written as one narrow column rather than seven, so the row still fits.
+                "Which days": " · ".join(f"{DAY_NAMES[d]} {kd.format_hm(h)}"
+                                         for d, h in enumerate(p["days"]) if h) or "—",
                 "In the log now": "—" if p["current_hours"] is None else kd.format_hm(p["current_hours"]),
                 "Hrs": p["hrs"], "Min": p["min"],
                 "Timesheet": p["current_timesheet"] or "No",
@@ -1032,12 +1037,17 @@ if not READONLY:
             edited_preview = st.data_editor(
                 preview, num_rows="fixed", width="stretch", hide_index=True, key=f"tt_push_{week_start.date()}",
                 disabled=["Status", "Project", "Category", "Major task", "Tracked",
-                          "In the log now"],
+                          "Which days", "In the log now"],
                 column_config={
                     "Send": st.column_config.CheckboxColumn("Send", default=False, width="small"),
                     "Hrs": st.column_config.NumberColumn("Hrs", min_value=0, step=1, width="small"),
                     "Min": st.column_config.NumberColumn("Min", min_value=0, max_value=59, step=1,
                                                          width="small"),
+                    "Which days": st.column_config.TextColumn(
+                        "Which days", width="medium",
+                        help="Where these hours came off — the same split the Breakdown tab "
+                             "shows. The time log stores one number for the week, so this is "
+                             "the only place the days behind it are visible."),
                     "Timesheet": st.column_config.SelectboxColumn("Timesheet", options=["Yes", "No", "N/A"],
                                                                width="small"),
                 },
